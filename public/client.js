@@ -39,18 +39,94 @@ const keys = new Set();
 const BLOCK = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space']);
 const typing = () => document.activeElement && document.activeElement.tagName === 'INPUT';
 addEventListener('keydown', e => {
+  if (capture) { onCaptureKey(e); return; }
   if (typing()) return;
-  if (BLOCK.has(e.code) && ui === 'play') e.preventDefault();
-  keys.add(e.code); keys.add('k:' + e.key.toLowerCase());
+  if ((BLOCK.has(e.code) || boundCodes().has(e.code)) && ui === 'play') e.preventDefault();
+  keys.add(e.code);
   if (e.code === 'Escape' && ui === 'play') quit();
 });
-addEventListener('keyup', e => { keys.delete(e.code); keys.delete('k:' + e.key.toLowerCase()); });
+addEventListener('keyup', e => { keys.delete(e.code); });
 addEventListener('blur', () => keys.clear());
 
-const KB = {
-  kb1: { l: ['KeyA'], r: ['KeyD'], u: ['KeyW', 'Space'], d: ['KeyS'], a: ['KeyF'], b: ['KeyG'] },
-  kb2: { l: ['ArrowLeft'], r: ['ArrowRight'], u: ['ArrowUp'], d: ['ArrowDown'], a: ['k:n', 'Numpad1'], b: ['k:m', 'Numpad2'] },
+/* ---------- Touches du clavier (modifiables) ---------- */
+const ACTIONS = [
+  { k: 'l', name: 'Gauche' }, { k: 'r', name: 'Droite' }, { k: 'u', name: 'Sauter' },
+  { k: 'd', name: 'Bas' }, { k: 'a', name: 'Pousser' }, { k: 'b', name: 'Choper / lancer' },
+];
+const KB_DEFAULT = {
+  kb1: { l: 'KeyA', r: 'KeyD', u: 'KeyW', d: 'KeyS', a: 'KeyF', b: 'KeyG' },
+  kb2: { l: 'ArrowLeft', r: 'ArrowRight', u: 'ArrowUp', d: 'ArrowDown', a: 'KeyN', b: 'KeyM' },
 };
+let KB = loadKeys();
+let keyNames = {};         // libellés appris au moment où le joueur appuie (clavier AZERTY, etc.)
+try { Object.assign(keyNames, JSON.parse(store.get('yeet-key-names') || '{}')); } catch {}
+function loadKeys() {
+  const kb = JSON.parse(JSON.stringify(KB_DEFAULT));
+  try {
+    const saved = JSON.parse(store.get('yeet-keys') || 'null');
+    if (saved) for (const sch of ['kb1', 'kb2']) for (const a of ACTIONS) if (saved[sch] && typeof saved[sch][a.k] === 'string') kb[sch][a.k] = saved[sch][a.k];
+  } catch {}
+  return kb;
+}
+function saveKeys() { store.set('yeet-keys', JSON.stringify(KB)); store.set('yeet-key-names', JSON.stringify(keyNames)); }
+function boundCodes() { return new Set([...Object.values(KB.kb1), ...Object.values(KB.kb2)]); }
+let layoutMap = null;
+try { navigator.keyboard && navigator.keyboard.getLayoutMap().then(m => { layoutMap = m; renderKeys(); }).catch(() => {}); } catch {}
+const SPECIAL = {
+  ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Space: 'Espace', Enter: 'Entrée',
+  ShiftLeft: 'Maj G', ShiftRight: 'Maj D', ControlLeft: 'Ctrl G', ControlRight: 'Ctrl D', AltLeft: 'Alt', AltRight: 'Alt Gr',
+  Tab: 'Tab', Backspace: '⌫', CapsLock: 'Verr Maj', NumpadEnter: 'Entrée (pavé)',
+};
+function keyLabel(code) {
+  if (SPECIAL[code]) return SPECIAL[code];
+  if (keyNames[code]) return keyNames[code];
+  if (layoutMap && layoutMap.get(code)) return layoutMap.get(code).toUpperCase();
+  let m;
+  if ((m = code.match(/^Key(.)$/))) return m[1];
+  if ((m = code.match(/^Digit(.)$/))) return m[1];
+  if ((m = code.match(/^Numpad(.+)$/))) return 'Pavé ' + m[1];
+  return code;
+}
+let capture = null;        // { sch, k, btn } pendant qu'on attend une touche
+function onCaptureKey(e) {
+  e.preventDefault(); e.stopPropagation();
+  const { sch, k } = capture;
+  capture = null;
+  if (e.code !== 'Escape') {
+    if (e.key && e.key.length === 1 && e.key !== ' ') keyNames[e.code] = e.key.toUpperCase();
+    const old = KB[sch][k];
+    // si la touche sert déjà ailleurs, les deux actions s'échangent
+    for (const s2 of ['kb1', 'kb2']) for (const a of ACTIONS) if (KB[s2][a.k] === e.code) KB[s2][a.k] = old;
+    KB[sch][k] = e.code;
+    saveKeys();
+  }
+  renderKeys();
+}
+function renderKeys() {
+  const grid = $('keysGrid'); if (!grid) return;
+  grid.innerHTML = '';
+  for (const sch of ['kb1', 'kb2']) {
+    const col = document.createElement('div'); col.className = 'keys-col';
+    col.innerHTML = `<h3>${sch === 'kb1' ? 'Clavier 1' : 'Clavier 2'}</h3>`;
+    for (const a of ACTIONS) {
+      const row = document.createElement('div'); row.className = 'key-row';
+      const lab = document.createElement('span'); lab.textContent = a.name;
+      const b = document.createElement('button'); b.type = 'button'; b.id = `key-${sch}-${a.k}`;
+      const waiting = capture && capture.sch === sch && capture.k === a.k;
+      b.textContent = waiting ? 'Appuie…' : keyLabel(KB[sch][a.k]);
+      b.classList.toggle('wait', !!waiting);
+      b.onclick = () => { capture = { sch, k: a.k }; renderKeys(); };
+      row.append(lab, b); col.appendChild(row);
+    }
+    grid.appendChild(col);
+  }
+  const L = c => `<kbd>${keyLabel(c)}</kbd>`;
+  for (const sch of ['kb1', 'kb2']) {
+    const m = KB[sch], el = $(sch === 'kb1' ? 'helpKb1' : 'helpKb2');
+    if (el) el.innerHTML = `${L(m.l)}${L(m.r)} bouger · ${L(m.u)} sauter · ${L(m.d)} bas<br>${L(m.a)} pousser · ${L(m.b)} choper / lancer`;
+  }
+  if (typeof renderSlots === 'function' && slotsEl) renderSlots();
+}
 // Tactile : joystick flottant à gauche, boutons à droite (multi-touch)
 const touch = { l: false, r: false, d: false, ju: false, j: false, a: false, b: false };
 const stickZone = $('stickZone'), stickBase = $('stickBase'), stickKnob = $('stickKnob');
@@ -128,7 +204,7 @@ function getPads() { try { return navigator.getGamepads ? navigator.getGamepads(
 function rawInput(ctrl) {
   const r = { x: 0, up: false, down: false, a: false, b: false };
   if (ctrl === 'kb1' || ctrl === 'kb2') {
-    const m = KB[ctrl], h = list => list.some(k => keys.has(k));
+    const m = KB[ctrl], h = code => keys.has(code);
     r.x = (h(m.r) ? 1 : 0) - (h(m.l) ? 1 : 0); r.up = h(m.u); r.down = h(m.d); r.a = h(m.a); r.b = h(m.b);
   } else if (ctrl.startsWith('pad')) {
     const gp = getPads()[+ctrl[3]];
@@ -483,12 +559,12 @@ function drawOffscreen(p) {
 function drawHUD(v) {
   const top = !touchEl.hidden;
   const n = v.p.length, cw = top ? 200 : 220, gap = top ? 10 : 14, total = n * cw + (n - 1) * gap;
-  let x = (W - total) / 2; const y = top ? 8 : H - 84;
+  let x = (W - total) / 2; const y = top ? 8 : H - 90;
   for (const p of v.p) {
     const col = COLORS[p.i];
     ctx.save(); ctx.globalAlpha = p.o ? 0.4 : 1;
-    ctx.fillStyle = '#0b0910d0'; roundRect(x, y, cw, 70, 6); ctx.fill();
-    ctx.fillStyle = col.c; ctx.fillRect(x, y + 8, 5, 54);
+    ctx.fillStyle = '#0b0910d0'; roundRect(x, y, cw, 80, 6); ctx.fill();
+    ctx.fillStyle = col.c; ctx.fillRect(x, y + 8, 5, 64);
     ctx.font = '15px Bungee, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = col.c;
     ctx.fillText(p.n, x + 16, y + 26);
     const nw = ctx.measureText(p.n).width;
@@ -496,6 +572,12 @@ function drawHUD(v) {
     ctx.fillText(String(p.c).toUpperCase(), x + 24 + nw, y + 25);
     for (let k = 0; k < Math.min(p.s, 9); k++) { ctx.fillStyle = col.c; ctx.beginPath(); ctx.arc(x + 22 + k * 15, y + 50, 5, 0, Math.PI * 2); ctx.fill(); }
     ctx.font = '34px Bungee, sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = p.o ? '#666' : dmgColor(p.d);
+    if (p.sk && p.sk.length) {
+      ctx.save(); ctx.font = '600 13px Barlow Condensed, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffc93c';
+      let t = skillNames(p.sk).toUpperCase();
+      while (t.length > 3 && ctx.measureText(t).width > cw - 28) t = t.slice(0, -2) + '…';
+      ctx.fillText(t, x + 16, y + 72); ctx.restore();
+    }
     ctx.fillText(p.o ? 'OUT' : p.d + '%', x + cw - 12 + (p.hs ? (Math.random() - 0.5) * 4 : 0), y + 56);
     ctx.restore();
     x += cw + gap;
@@ -605,31 +687,78 @@ function setTab(t) {
   tab = t;
   $('tabOnline').setAttribute('aria-selected', t === 'online');
   $('tabLocal').setAttribute('aria-selected', t === 'local');
+  $('tabKeys').setAttribute('aria-selected', t === 'keys');
   $('viewLocal').hidden = t !== 'local';
+  $('viewKeys').hidden = t !== 'keys';
+  if (t !== 'keys' && capture) { capture = null; renderKeys(); }
   $('viewJoin').hidden = t !== 'online' || !!net.room;
   $('viewLobby').hidden = t !== 'online' || !net.room;
 }
 $('tabOnline').onclick = () => setTab('online');
 $('tabLocal').onclick = () => setTab('local');
+$('tabKeys').onclick = () => { setTab('keys'); renderKeys(); };
+$('keysReset').onclick = () => { KB = JSON.parse(JSON.stringify(KB_DEFAULT)); keyNames = {}; saveKeys(); renderKeys(); };
+
+/* ---------- Compétences ---------- */
+const SKILL_NAME = Object.fromEntries(Yeet.SKILLS.map(k => [k.id, k.name]));
+const skillNames = list => (list || []).map(id => SKILL_NAME[id]).filter(Boolean).join(' · ');
+function loadSkills(key) { try { return Yeet.cleanSkills(JSON.parse(store.get(key) || '[]')); } catch { return []; } }
+// Grille de 10 compétences ; au-delà de 2, la plus ancienne est remplacée
+function renderSkillGrid(box, counter, selected, onChange) {
+  box.innerHTML = '';
+  for (const k of Yeet.SKILLS) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'skill';
+    b.setAttribute('aria-pressed', selected.includes(k.id));
+    const n = document.createElement('b'); n.textContent = k.name;
+    const d = document.createElement('span'); d.textContent = k.desc;
+    b.append(n, d);
+    b.onclick = () => {
+      let next = selected.includes(k.id) ? selected.filter(x => x !== k.id) : [...selected, k.id];
+      if (next.length > Yeet.MAX_SKILLS) next = next.slice(-Yeet.MAX_SKILLS);
+      onChange(next);
+    };
+    box.appendChild(b);
+  }
+  counter.textContent = `${selected.length} / ${Yeet.MAX_SKILLS}`;
+}
 
 /* ---------- Partie locale ---------- */
 const CTRL_TYPES = ['kb1', 'kb2', 'pad0', 'pad1', 'pad2', 'pad3', 'touch', 'bot', 'off'];
 const CTRL_LABEL = { kb1: 'Clavier 1', kb2: 'Clavier 2', pad0: 'Manette 1', pad1: 'Manette 2', pad2: 'Manette 3', pad3: 'Manette 4', touch: 'Tactile', bot: 'Bot', off: 'Vide' };
+const kbHint = sch => { const m = KB[sch]; return `${keyLabel(m.l)} ${keyLabel(m.r)} bouger · ${keyLabel(m.u)} saut · ${keyLabel(m.a)} pousse · ${keyLabel(m.b)} chope`; };
 const CTRL_HINT = {
-  kb1: 'ZQSD ou WASD · F pousse · G chope', kb2: 'Flèches · N pousse · M chope',
   pad: 'Stick · A saut · X pousse · B chope', touch: 'Boutons à l’écran',
   bot: 'Contrôlé par l’ordinateur', off: 'Personne à cette place',
 };
 let slots = [isTouch ? 'touch' : 'kb1', isTouch ? 'bot' : 'kb2', 'bot', 'bot'];
 let stockCount = 3;
-const slotsEl = $('slots');
+let localSkills = [0, 1, 2, 3].map(i => loadSkills('yeet-skills-local-' + i));
+let skillSeat = 0;
+function renderLocalSkills() {
+  const humans = slots.map((c, i) => (c !== 'off' && c !== 'bot') ? i : -1).filter(i => i >= 0);
+  const seatsBox = $('localSkillSeats'); seatsBox.innerHTML = '';
+  if (!humans.includes(skillSeat)) skillSeat = humans.length ? humans[0] : -1;
+  for (const i of humans) {
+    const b = document.createElement('button'); b.type = 'button';
+    b.textContent = 'J' + (i + 1); b.style.color = COLORS[i].c;
+    b.setAttribute('aria-pressed', i === skillSeat);
+    b.onclick = () => { skillSeat = i; renderLocalSkills(); };
+    seatsBox.appendChild(b);
+  }
+  const grid = $('localSkills'), count = $('localSkillCount');
+  if (skillSeat < 0) { grid.innerHTML = '<p class="note">Les bots prennent deux compétences au hasard. Ajoute un joueur humain pour en choisir.</p>'; count.textContent = ''; return; }
+  renderSkillGrid(grid, count, localSkills[skillSeat], next => {
+    localSkills[skillSeat] = next; store.set('yeet-skills-local-' + skillSeat, JSON.stringify(next)); renderLocalSkills();
+  });
+}
+let slotsEl = $('slots');
 function chip(i) { return `<span class="chip" style="background:${COLORS[i].c}"></span><span class="slot-name" style="color:${COLORS[i].c}">J${i + 1}</span>`; }
 function renderSlots() {
   slotsEl.innerHTML = '';
   const pads = getPads();
   slots.forEach((c, i) => {
     const el = document.createElement('div'); el.className = 'slot'; el.dataset.off = c === 'off' ? '1' : '0';
-    let hint = CTRL_HINT[c.startsWith('pad') ? 'pad' : c];
+    let hint = c === 'kb1' || c === 'kb2' ? kbHint(c) : CTRL_HINT[c.startsWith('pad') ? 'pad' : c];
     if (c.startsWith('pad') && !pads[+c[3]]) hint = 'Pas encore détectée : appuie sur un bouton de la manette';
     el.innerHTML = `<div class="slot-top">${chip(i)}</div><button id="slot${i}" type="button">${CTRL_LABEL[c]} ▸</button><small>${hint}</small>`;
     el.querySelector('button').onclick = () => {
@@ -638,7 +767,7 @@ function renderSlots() {
         k = (k + 1) % CTRL_TYPES.length; const t = CTRL_TYPES[k];
         if (t === 'bot' || t === 'off' || !slots.some((s, j) => j !== i && s === t)) break;
       }
-      slots[i] = CTRL_TYPES[k]; renderSlots(); $('slot' + i).focus();
+      slots[i] = CTRL_TYPES[k]; renderSlots(); renderLocalSkills(); $('slot' + i).focus();
     };
     slotsEl.appendChild(el);
   });
@@ -653,7 +782,7 @@ function startLocal() {
   initAudio();
   localCtrls = slots.slice();
   lg = Yeet.createGame({
-    seats: slots.map((c, i) => c === 'off' ? null : { bot: c === 'bot', name: 'J' + (i + 1), label: CTRL_LABEL[c] }),
+    seats: slots.map((c, i) => c === 'off' ? null : { bot: c === 'bot', name: 'J' + (i + 1), label: CTRL_LABEL[c], skills: c === 'bot' ? undefined : localSkills[i] }),
     stocks: stockCount,
   });
   if (slots.includes('touch')) goFullscreen();
@@ -724,8 +853,16 @@ function onNet(m) {
   }
 }
 
+let mySkills = loadSkills('yeet-skills');
+function renderMySkills() {
+  renderSkillGrid($('mySkills'), $('mySkillCount'), mySkills, next => {
+    mySkills = next; store.set('yeet-skills', JSON.stringify(next)); renderMySkills();
+    if (net.room) netSend({ t: 'skills', sk: next });
+  });
+}
 function renderLobby() {
   const r = net.room; if (!r) return;
+  renderMySkills();
   $('roomCode').textContent = r.code;
   $('lStockVal').textContent = r.stocks;
   const box = $('lobbySeats'); box.innerHTML = '';
@@ -735,8 +872,13 @@ function renderLobby() {
     const name = document.createElement('div'); name.className = 'slot-name';
     name.textContent = s ? s.name : 'Place libre';
     el.appendChild(name);
+    if (s && !s.bot) {
+      const sk = document.createElement('div'); sk.className = 'seat-skills';
+      sk.textContent = skillNames(s.sk) || 'Aucune compétence';
+      el.appendChild(sk);
+    }
     const small = document.createElement('small');
-    small.textContent = !s ? 'En attente d’un joueur' : s.bot ? 'Bot' : (i === r.you ? 'Toi' : 'Joueur en ligne') + (i === 0 && r.host && i === r.you ? '' : '');
+    small.textContent = !s ? 'En attente d’un joueur' : s.bot ? 'Bot · 2 compétences au hasard' : (i === r.you ? 'Toi' : 'Joueur en ligne');
     if (r.host && (!s || s.bot)) {
       const b = document.createElement('button'); b.type = 'button';
       b.textContent = s ? 'Retirer le bot' : 'Ajouter un bot';
@@ -759,7 +901,7 @@ function joinWith(msg) {
   if (!name) { setStatus('netStatus', 'Choisis un pseudo avant de jouer.', true); nameInput.focus(); return; }
   store.set('yeet-name', name);
   initAudio(); goFullscreen();
-  netSend({ ...msg, name });
+  netSend({ ...msg, name, sk: mySkills });
 }
 $('createBtn').onclick = () => joinWith({ t: 'create' });
 $('joinBtn').onclick = () => {
@@ -811,6 +953,9 @@ function frame(now) {
 }
 
 makePattern();
+renderKeys();
+renderLocalSkills();
+renderMySkills();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { bgDirty = true; });
 setTab('online');
 showMenu();

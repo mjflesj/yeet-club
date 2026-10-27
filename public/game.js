@@ -23,6 +23,50 @@ const SPAWN_X = [360, 920, 560, 720];
 const ITEM_TYPES = ['crate', 'bomb', 'bat', 'crate', 'bomb'];
 const NO_INPUT = { x: 0, up: false, down: false, a: false, b: false };
 
+/* ---------- Compétences ----------
+   Chaque joueur en choisit jusqu'à deux avant la partie. */
+const SKILLS = [
+  { id: 'ressort', name: 'Ressort', desc: 'Un troisième saut en l’air.' },
+  { id: 'sprint', name: 'Sprinteur', desc: 'Cours 20 % plus vite.' },
+  { id: 'lourd', name: 'Poids lourd', desc: 'Tu voles 25 % moins loin, mais tu cours 10 % moins vite.' },
+  { id: 'poings', name: 'Poings de fer', desc: 'Tes poussées envoient 40 % plus loin et font +3 %.' },
+  { id: 'lanceur', name: 'Gros bras', desc: 'Tes lancers (joueurs et objets) partent 35 % plus fort.' },
+  { id: 'gecko', name: 'Gecko', desc: 'Deux accroches au mur par saut, tenues deux fois plus longtemps.' },
+  { id: 'increvable', name: 'Increvable', desc: 'Une vie en plus.' },
+  { id: 'artificier', name: 'Artificier', desc: 'Tes bombes explosent 40 % plus large ; les explosions te font moitié moins.' },
+  { id: 'anguille', name: 'Anguille', desc: 'Tu t’échappes deux fois plus vite quand on te chope.' },
+  { id: 'reflexes', name: 'Réflexes', desc: 'Tu reprends le contrôle 35 % plus vite après un coup.' },
+];
+const SKILL_IDS = SKILLS.map(k => k.id);
+const MAX_SKILLS = 2;
+function cleanSkills(list) {
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.filter(id => SKILL_IDS.includes(id)))].slice(0, MAX_SKILLS);
+}
+function randomSkills() {
+  const a = SKILL_IDS.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; }
+  return a.slice(0, MAX_SKILLS);
+}
+// Transforme la liste de compétences en valeurs utilisées par la physique
+function applySkills(p, list) {
+  const sk = cleanSkills(list), has = id => sk.includes(id);
+  p.sk = sk;
+  p.maxJumps = has('ressort') ? 3 : 2;
+  p.speedMul = (has('sprint') ? 1.2 : 1) * (has('lourd') ? 0.9 : 1);
+  p.kbMul = has('lourd') ? 0.75 : 1;
+  p.stunMul = has('reflexes') ? 0.65 : 1;
+  p.shoveMul = has('poings') ? 1.4 : 1;
+  p.shoveDmg = has('poings') ? 3 : 0;
+  p.throwMul = has('lanceur') ? 1.35 : 1;
+  p.maxCling = has('gecko') ? 2 : 1;
+  p.clingTime = has('gecko') ? 2.4 : 1.2;
+  p.blastMul = has('artificier') ? 1.4 : 1;
+  p.blastTaken = has('artificier') ? 0.5 : 1;
+  p.escapeMul = has('anguille') ? 2 : 1;
+  return p;
+}
+
 /* ---------- Création ---------- */
 // seats : tableau de 4 entrées, null ou { bot, name, label }
 function createGame(cfg) {
@@ -30,27 +74,31 @@ function createGame(cfg) {
     players: [], items: [], events: [], hitstop: 0, acc: 0, time: 0,
     itemTimer: cfg.demo ? 1.5 : 4, ending: null, finished: false, demo: !!cfg.demo, nextId: 1,
   };
-  cfg.seats.forEach((s, i) => { if (s) g.players.push(makePlayer(i, s, cfg.demo ? 99 : cfg.stocks)); });
+  cfg.seats.forEach((s, i) => { if (s) g.players.push(makePlayer(i, s, cfg.demo ? 99 : cfg.stocks, cfg.demo)); });
   g.players.forEach(p => placePlayer(p, true));
   return g;
 }
 
-function makePlayer(i, seat, stocks) {
-  return {
+function makePlayer(i, seat, stocks, demo) {
+  const sk = seat.bot && !seat.skills ? randomSkills() : seat.skills;
+  const p = {
     i, bot: !!seat.bot, name: seat.name || 'J' + (i + 1), label: seat.label || (seat.bot ? 'Bot' : ''),
     x: 0, y: 0, vx: 0, vy: 0, w: 36, h: 42, face: i % 2 ? -1 : 1,
     ground: false, gplat: null, jumps: 2, dmg: 0, stocks, out: false, respawn: 0, hitstun: 0,
     shoveCd: 0, shoveT: 0, grabCd: 0, held: null, heldBy: null, escape: 0, holdT: 0, invuln: 0, drop: 0,
-    lastHit: null, lastHitT: 0, kos: 0, falls: 0, squash: 0, cling: 0, wallUsed: false, wallDir: 0,
+    lastHit: null, lastHitT: 0, kos: 0, falls: 0, squash: 0, cling: 0, wallLeft: 1, wallDir: 0,
     inp: NO_INPUT, prev: { x: 0, up: false, down: false, a: false, b: false }, ai: { cd: 0.5, t: 0, itemCd: 0 },
   };
+  applySkills(p, sk);
+  if (!demo && p.sk.includes('increvable')) p.stocks++;
+  return p;
 }
 
 function placePlayer(p, initial) {
   p.x = initial ? SPAWN_X[p.i] : 520 + p.i * 80; p.y = initial ? MAIN.y - p.h / 2 : 120;
-  p.vx = p.vy = 0; p.dmg = 0; p.hitstun = 0; p.jumps = 2; p.held = null; p.heldBy = null;
+  p.vx = p.vy = 0; p.dmg = 0; p.hitstun = 0; p.jumps = p.maxJumps; p.held = null; p.heldBy = null;
   p.invuln = initial ? 0 : 2; p.lastHit = null; p.face = p.x < W / 2 ? 1 : -1;
-  p.cling = 0; p.wallUsed = false;
+  p.cling = 0; p.wallLeft = p.maxCling;
 }
 
 const active = p => !p.out && p.respawn <= 0;
@@ -99,7 +147,7 @@ function view(g) {
       g: p.ground ? 1 : 0, k: p.kos, fl: p.falls,
       j: p.jumps, dr: Math.max(0, Math.round(p.drop * 1000) / 1000), ht: Math.max(0, Math.round(p.hitstun * 1000) / 1000),
       sc: Math.max(0, Math.round(p.shoveCd * 1000) / 1000),
-      cl: Math.max(0, Math.round(p.cling * 1000) / 1000), wu: p.wallUsed ? 1 : 0, wd: p.wallDir,
+      cl: Math.max(0, Math.round(p.cling * 1000) / 1000), wu: p.wallLeft, wd: p.wallDir, sk: p.sk,
     })),
     it: g.items.map(it => ({
       id: it.id, t: it.type, x: r1(it.x), y: r1(it.y), r: Math.round(it.rot * 100) / 100,
@@ -125,8 +173,8 @@ function shake(g, v) { ev(g, ['k', Math.round(v)]); }
 function hit(g, q, dx, dy, base, dmg, by) {
   const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
   q.dmg = Math.min(999, q.dmg + dmg);
-  const v = base * (1 + q.dmg / 85);
-  q.vx = dx * v; q.vy = dy * v; q.hitstun = 0.14 + v / 2800; q.ground = false; q.cling = 0;
+  const v = base * (1 + q.dmg / 85) * q.kbMul;
+  q.vx = dx * v; q.vy = dy * v; q.hitstun = (0.14 + v / 2800) * q.stunMul; q.ground = false; q.cling = 0;
   if (q.held) release(g, q, false);
   if (q.heldBy) release(g, q.heldBy, false);
   if (by) { q.lastHit = by; q.lastHitT = 5; }
@@ -162,7 +210,7 @@ function doShove(g, p) {
   for (const q of g.players) {
     if (q === p || !active(q) || q.invuln > 0 || q.heldBy) continue;
     if (Math.hypot(q.x - hx, q.y - hy) < r + q.w / 2) {
-      hit(g, q, p.face, -0.55, bat ? 640 : 330, bat ? 16 : 7, p);
+      hit(g, q, p.face, -0.55, (bat ? 640 : 330) * p.shoveMul, (bat ? 16 : 7) + p.shoveDmg, p);
       landed = true;
     }
   }
@@ -219,10 +267,10 @@ function throwHeld(g, p, inp) {
   else if (inp.down && !p.ground) { dx = p.face * 0.3; dy = 1; }
   if (h.kind === 'p') {
     const v = h.ref; v.heldBy = null; v.x = p.x + p.face * 24; v.y = p.y - 30;
-    hit(g, v, dx, dy, 540, 10, p); v.invuln = 0;
+    hit(g, v, dx, dy, 540 * p.throwMul, 10, p); v.invuln = 0;
     pop(g, v.x, v.y - 30, 'YEET!', COLORS[p.i].c, false); sfx(g, 'yeet');
   } else {
-    const it = h.ref, L = Math.hypot(dx, dy), sp = it.type === 'crate' ? 880 : 1080;
+    const it = h.ref, L = Math.hypot(dx, dy), sp = (it.type === 'crate' ? 880 : 1080) * (p.throwMul > 1 ? 1.25 : 1);
     it.heldBy = null; it.x = p.x + p.face * 22; it.y = p.y - 16;
     it.vx = dx / L * sp + p.vx * 0.3; it.vy = dy / L * sp; it.thrownBy = p; it.owner = p; it.grace = 0.15; it.spin = p.face * 14;
     sfx(g, 'whoosh');
@@ -239,9 +287,10 @@ function explode(g, it) {
   for (const q of g.players) {
     if (!active(q)) continue;
     const d = Math.hypot(q.x - it.x, q.y - it.y);
-    if (d < 150) {
+    const R = 150 * (it.owner ? it.owner.blastMul : 1);
+    if (d < R) {
       if (q.heldBy) release(g, q.heldBy, false);
-      hit(g, q, q.x - it.x || 1, (q.y - it.y) - 50, 860 * (1 - d / 150 * 0.45), 20, it.owner && it.owner !== q ? it.owner : null);
+      hit(g, q, q.x - it.x || 1, (q.y - it.y) - 50, 860 * (1 - d / R * 0.45) * q.blastTaken, 20, it.owner && it.owner !== q ? it.owner : null);
       q.invuln = 0;
     }
   }
@@ -294,8 +343,8 @@ function land(o, pl, hh) {
   if (o.hitstun > 0 && o.vy > 650) { o.vy = -o.vy * 0.42; return; }
   if (o.vy > 500 && o.squash !== undefined) o.squash = 0.35;
   o.vy = 0; o.ground = true; o.gplat = pl;
-  if (o.wallUsed !== undefined) o.wallUsed = false;
-  if (o.jumps !== undefined) o.jumps = 2;
+  if (o.wallLeft !== undefined) o.wallLeft = o.maxCling;
+  if (o.jumps !== undefined) o.jumps = o.maxJumps;
 }
 function groundBelow(x, y) {
   for (const pl of PLATS) if (x > pl.x + 4 && x < pl.x + pl.w - 4 && pl.y >= y - 4) return true;
@@ -310,11 +359,11 @@ function tickTimers(p, dt) {
 }
 function controlMove(g, p, inp, pr, dt, carrying) {
   if (inp.x && p.shoveT <= 0) p.face = inp.x;
-  const speed = carrying ? 200 : 310;
+  const speed = (carrying ? 200 : 310) * p.speedMul;
   const k = p.ground ? 16 : 6;
   p.vx += (inp.x * speed - p.vx) * Math.min(1, dt * k);
   if (pr.up && p.jumps > 0) {
-    p.vy = p.jumps === 2 ? -760 : -680; p.jumps--; p.ground = false; p.squash = -0.3;
+    p.vy = p.jumps === p.maxJumps ? -760 : -680; p.jumps--; p.ground = false; p.squash = -0.3;
     burst(g, p.x, p.y + p.h / 2, 5, '#ddd', 120, 3); sfx(g, 'jump', p);
   }
   if (inp.down && p.ground && p.gplat && !p.gplat.solid) p.drop = 0.22;
@@ -322,7 +371,7 @@ function controlMove(g, p, inp, pr, dt, carrying) {
 }
 // Accroche au mur : une fois par saut, en se poussant contre le côté du ring.
 // Le joueur glisse doucement, puis saute pour remonter (un saut en l'air reste dispo).
-const CLING_TIME = 1.2, CLING_ZONE = 220;
+const CLING_ZONE = 220;
 function wallNear(p) {
   for (const pl of PLATS) {
     if (!pl.solid || p.y < pl.y - 10 || p.y > pl.y + CLING_ZONE) continue;
@@ -337,17 +386,17 @@ function wallMove(g, p, inp, pr, dt, carrying) {
     p.cling -= dt; p.face = p.wallDir;
     p.vx = p.wallDir * 30; p.vy = 30;
     if (pr.up) {
-      p.cling = 0; p.vy = -960; p.vx = p.wallDir * 170; p.jumps = 1; p.squash = -0.3;
+      p.cling = 0; p.vy = -960; p.vx = p.wallDir * 170; p.jumps = p.maxJumps - 1; p.squash = -0.3;
       burst(g, p.x + p.wallDir * p.w / 2, p.y, 8, '#ddd', 180, 3); sfx(g, 'jump', p);
       return 'jump';
     }
     if (inp.down || inp.x === -p.wallDir) p.cling = 0;
     return 'cling';
   }
-  if (!p.ground && !p.wallUsed && !carrying && p.vy > -250) {
+  if (!p.ground && p.wallLeft > 0 && !carrying && p.vy > -250) {
     const d = wallNear(p);
     if (d && inp.x === d) {
-      p.cling = CLING_TIME; p.wallUsed = true; p.wallDir = d; p.face = d; p.vx = 0; p.vy = 0;
+      p.cling = p.clingTime; p.wallLeft--; p.wallDir = d; p.face = d; p.vx = 0; p.vy = 0;
       burst(g, p.x + d * p.w / 2, p.y - 10, 6, '#ffc93c', 120, 3); sfx(g, 'grab', p);
       return 'cling';
     }
@@ -376,8 +425,8 @@ function updatePlayer(g, p, dt) {
   tickTimers(p, dt);
 
   if (p.heldBy) {
-    if (pr.up || pr.a || pr.b) p.escape -= 0.14;
-    p.escape -= dt;
+    if (pr.up || pr.a || pr.b) p.escape -= 0.14 * p.escapeMul;
+    p.escape -= dt * p.escapeMul;
     if (p.escape <= 0) release(g, p.heldBy, true);
     return;
   }
@@ -406,9 +455,11 @@ function restorePlayer(v, prevInp) {
   const p = {
     i: v.i, x: v.x, y: v.y, vx: v.vx, vy: v.vy, w: 36, h: 42, face: v.f, ground: !!v.g, gplat: null,
     jumps: v.j, drop: v.dr, hitstun: v.ht, shoveCd: v.sc, shoveT: v.sh, grabCd: 0, invuln: 0, lastHitT: 0,
-    squash: v.sq, cling: v.cl, wallUsed: !!v.wu, wallDir: v.wd, carrying: v.hk === 'p', bat: v.hk === 'bat', prev: prevInp || NO_INPUT,
+    squash: v.sq, cling: v.cl, wallLeft: v.wu, wallDir: v.wd, carrying: v.hk === 'p', bat: v.hk === 'bat', prev: prevInp || NO_INPUT,
   };
   if (p.ground) p.gplat = PLATS.find(pl => Math.abs(pl.y - (p.y + p.h / 2)) < 1.5 && p.x + 18 > pl.x && p.x - 18 < pl.x + pl.w) || null;
+  applySkills(p, v.sk);
+  p.jumps = v.j; p.wallLeft = v.wu;
   return p;
 }
 // Avance le corps prédit d'un pas. Renvoie 'jump' / 'shove' quand l'action démarre.
@@ -603,7 +654,7 @@ function botInput(g, p, dt) {
   return r;
 }
 
-const api = { W, H, STEP, COLORS, PLATS, createGame, restorePlayer, predictStep, update, setInput, setBot, drainEvents, view, results };
+const api = { W, H, STEP, COLORS, PLATS, SKILLS, MAX_SKILLS, cleanSkills, createGame, restorePlayer, predictStep, update, setInput, setBot, drainEvents, view, results };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else root.Yeet = api;
 })(typeof self !== 'undefined' ? self : this);

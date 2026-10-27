@@ -65,27 +65,27 @@ function roomState(room) {
     send(s.ws, {
       t: 'room', code: room.code, you: room.seats.indexOf(s), host: room.host === s.ws,
       stocks: room.stocks, playing: !!room.game,
-      seats: room.seats.map(x => x ? { bot: !x.ws, name: x.name } : null),
+      seats: room.seats.map(x => x ? { bot: !x.ws, name: x.name, sk: x.ws ? x.sk : [] } : null),
     });
   }
 }
 
-function createRoom(ws, name) {
+function createRoom(ws, name, skills) {
   const room = { code: newCode(), seats: [null, null, null, null], host: ws, stocks: 3, game: null, timer: null };
-  room.seats[0] = { ws, name: cleanName(name) };
+  room.seats[0] = { ws, name: cleanName(name), sk: Yeet.cleanSkills(skills) };
   rooms.set(room.code, room);
   ws.room = room;
   roomState(room);
 }
 
-function joinRoom(ws, code, name) {
+function joinRoom(ws, code, name, skills) {
   const room = rooms.get(String(code || '').toUpperCase().trim());
   if (!room) return send(ws, { t: 'err', msg: 'Aucune salle avec ce code.' });
   if (room.game) return send(ws, { t: 'err', msg: 'Une partie est en cours dans cette salle. Réessaie à la fin du round.' });
   let i = room.seats.indexOf(null);
   if (i < 0) i = room.seats.findIndex(s => s && !s.ws);   // remplace un bot
   if (i < 0) return send(ws, { t: 'err', msg: 'La salle est pleine (4 joueurs).' });
-  room.seats[i] = { ws, name: cleanName(name) };
+  room.seats[i] = { ws, name: cleanName(name), sk: Yeet.cleanSkills(skills) };
   ws.room = room;
   roomState(room);
 }
@@ -114,7 +114,8 @@ function startGame(room, asker) {
       : 'Il faut au moins deux combattants. Ajoute un bot ou invite un ami.' });
   }
   room.played = true;
-  const seats = room.seats.map(s => s ? { bot: !s.ws, name: s.name, label: s.ws ? 'En ligne' : 'Bot' } : null);
+  // les bots reçoivent deux compétences au hasard (skills non défini)
+  const seats = room.seats.map(s => s ? { bot: !s.ws, name: s.name, label: s.ws ? 'En ligne' : 'Bot', skills: s.ws ? s.sk : undefined } : null);
   room.game = Yeet.createGame({ seats, stocks: room.stocks });
   broadcast(room, { t: 'start' });
   roomState(room);
@@ -169,8 +170,14 @@ wss.on('connection', ws => {
     if (!m || typeof m !== 'object') return;
     const room = ws.room;
     switch (m.t) {
-      case 'create': if (!room) createRoom(ws, m.name); break;
-      case 'join': if (!room) joinRoom(ws, m.code, m.name); break;
+      case 'create': if (!room) createRoom(ws, m.name, m.sk); break;
+      case 'join': if (!room) joinRoom(ws, m.code, m.name, m.sk); break;
+      case 'skills': {
+        if (!room || room.game) break;
+        const st = room.seats.find(s => s && s.ws === ws);
+        if (st) { st.sk = Yeet.cleanSkills(m.sk); roomState(room); }
+        break;
+      }
       case 'leave': leaveRoom(ws); break;
       case 'in': {
         if (!room || !room.game) break;

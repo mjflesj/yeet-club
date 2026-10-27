@@ -127,6 +127,29 @@ kbd{display:inline-block;min-width:1.5em;padding:0 5px;border:1px solid var(--li
 .room-head{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
 .room-code{font-family:var(--f-display);font-size:clamp(30px,6vw,46px);letter-spacing:.12em;color:var(--hazard);line-height:1}
 .room-code small{display:block;font-family:var(--f-body);font-size:14px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;margin-bottom:4px}
+.skills-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline;justify-content:space-between}
+.skills-head h3{margin:0;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--chalk)}
+.skills-head span{font-size:15px;color:var(--muted)}
+.skill-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.skill{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:2px solid var(--line);border-radius:4px;background:#0006;text-align:left}
+.skill b{font-family:var(--f-display);font-weight:400;font-size:14px;letter-spacing:.02em;color:var(--chalk)}
+.skill span{font-size:14px;line-height:1.2;color:var(--muted)}
+.skill:hover{border-color:#ffc93c99}
+.skill[aria-pressed="true"]{border-color:var(--hazard);background:#ffc93c1f}
+.skill[aria-pressed="true"] b{color:var(--hazard)}
+.seat-pick{display:flex;flex-wrap:wrap;gap:8px}
+.seat-pick button{padding:6px 12px;border:2px solid var(--line);border-radius:3px;background:transparent;font-family:var(--f-display);font-size:14px}
+.seat-pick button[aria-pressed="true"]{background:#ffffff14;border-color:currentColor}
+.seat-skills{font-size:14px;color:var(--hazard);line-height:1.2}
+.keys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+.keys-col h3{margin:0 0 8px;font-size:15px;letter-spacing:.12em;text-transform:uppercase}
+.key-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line)}
+.key-row span{color:var(--muted);font-size:17px}
+.key-row button{min-width:92px;padding:6px 10px;border:2px solid var(--line);border-bottom-width:4px;border-radius:4px;background:#0006;font-weight:700;font-size:17px}
+.key-row button:hover{border-color:var(--hazard)}
+.key-row button.wait{border-color:var(--hazard);color:var(--hazard);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.5}}
+@media (prefers-reduced-motion:reduce){.key-row button.wait{animation:none}}
 .seat-you{color:var(--hazard);font-size:14px;letter-spacing:.1em;text-transform:uppercase;font-weight:700}
 </style>
 </head>
@@ -153,6 +176,7 @@ kbd{display:inline-block;min-width:1.5em;padding:0 5px;border:1px solid var(--li
       <div class="tabs" role="tablist">
         <button class="tab" id="tabOnline" role="tab" aria-selected="true">En ligne</button>
         <button class="tab" id="tabLocal" role="tab" aria-selected="false">Même écran</button>
+        <button class="tab" id="tabKeys" role="tab" aria-selected="false">Touches</button>
       </div>
 
       <!-- En ligne : rejoindre ou créer -->
@@ -175,6 +199,8 @@ kbd{display:inline-block;min-width:1.5em;padding:0 5px;border:1px solid var(--li
           <button id="copyBtn" class="ghost">Copier le lien d'invitation</button>
         </div>
         <div class="slots" id="lobbySeats"></div>
+        <div class="skills-head"><h3>Tes compétences</h3><span id="mySkillCount">0 / 2</span></div>
+        <div class="skill-grid" id="mySkills"></div>
         <div class="row">
           <div class="opt">Vies
             <button id="lStockDown" aria-label="Moins de vies">−</button>
@@ -190,6 +216,9 @@ kbd{display:inline-block;min-width:1.5em;padding:0 5px;border:1px solid var(--li
       <!-- Même écran -->
       <div class="view" id="viewLocal" hidden>
         <div class="slots" id="slots"></div>
+        <div class="skills-head"><h3>Compétences</h3><span id="localSkillCount">0 / 2</span></div>
+        <div class="seat-pick" id="localSkillSeats"></div>
+        <div class="skill-grid" id="localSkills"></div>
         <div class="row">
           <div class="opt">Vies
             <button id="stockDown" aria-label="Moins de vies">−</button>
@@ -201,11 +230,18 @@ kbd{display:inline-block;min-width:1.5em;padding:0 5px;border:1px solid var(--li
         <p class="status" id="padNote">Branche une manette et appuie sur un bouton pour qu'elle soit détectée. Clique sur un contrôle pour le changer.</p>
       </div>
 
+      <!-- Touches du clavier -->
+      <div class="view" id="viewKeys" hidden>
+        <p class="note">Clique sur une touche puis appuie sur la nouvelle. Échap annule. Si la touche sert déjà, les deux actions s'échangent. Tes réglages restent enregistrés dans ce navigateur.</p>
+        <div class="keys-grid" id="keysGrid"></div>
+        <button id="keysReset" class="ghost" style="align-self:flex-start">Remettre les touches par défaut</button>
+      </div>
+
       <details class="help">
         <summary>Commandes</summary>
         <div class="help-grid">
-          <div><h3>Clavier 1</h3><p><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> (ou WASD) bouger et sauter<br><kbd>F</kbd> pousser · <kbd>G</kbd> choper / lancer</p></div>
-          <div><h3>Clavier 2</h3><p><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> bouger et sauter<br><kbd>N</kbd> pousser · <kbd>M</kbd> choper / lancer</p></div>
+          <div><h3>Clavier 1</h3><p id="helpKb1"></p></div>
+          <div><h3>Clavier 2</h3><p id="helpKb2"></p></div>
           <div><h3>Téléphone</h3><p>Glisse le pouce à gauche pour bouger (vers le haut = sauter). Boutons à droite : saut, pousser, choper. Joue en paysage.</p></div>
           <div><h3>Manette</h3><p>Stick ou croix pour bouger · <kbd>A</kbd> sauter<br><kbd>X</kbd>/<kbd>RB</kbd> pousser · <kbd>B</kbd>/<kbd>LB</kbd> choper</p></div>
           <div><h3>Astuces</h3><p>En ligne, tous les contrôles marchent. Plus ton % monte, plus tu voles loin. Haut + chope = lancer vers le ciel. Bas sur une passerelle = la traverser. Sous le ring, pousse contre le mur pour t'agripper puis saute. Chopé ? Martèle les boutons.</p></div>

@@ -43,8 +43,9 @@ Pour supprimer le délai ressenti :
 
 | Sens | Message | Rôle |
 |------|---------|------|
-| client → serveur | `{t:'create', name}` | crée une salle |
-| client → serveur | `{t:'join', code, name}` | rejoint une salle |
+| client → serveur | `{t:'create', name, sk}` | crée une salle (`sk` = compétences) |
+| client → serveur | `{t:'join', code, name, sk}` | rejoint une salle |
+| client → serveur | `{t:'skills', sk}` | change ses compétences dans le salon |
 | client → serveur | `{t:'seat', i}` | (hôte) ajoute ou retire un bot sur la place `i` |
 | client → serveur | `{t:'stocks', n}` | (hôte) nombre de vies |
 | client → serveur | `{t:'start'}` | (hôte) lance la partie |
@@ -55,12 +56,33 @@ Pour supprimer le délai ressenti :
 | serveur → client | `{t:'start'}` / `{t:'snap', v, e}` / `{t:'end', r}` | partie : début, état + événements, résultats |
 | serveur → client | `{t:'err', msg}` | erreur à afficher |
 
+## Compétences
+
+Avant la partie, chaque joueur choisit jusqu'à **2 compétences** parmi 10 (dans le salon en ligne, ou par joueur dans « Même écran »). Les bots en tirent 2 au hasard.
+
+| Compétence | Effet |
+|---|---|
+| Ressort | Un troisième saut en l'air |
+| Sprinteur | Cours 20 % plus vite |
+| Poids lourd | Tu voles 25 % moins loin, mais tu cours 10 % moins vite |
+| Poings de fer | Poussées 40 % plus fortes, +3 % de dégâts |
+| Gros bras | Lancers (joueurs et objets) 35 % plus forts |
+| Gecko | Deux accroches au mur par saut, tenues deux fois plus longtemps |
+| Increvable | Une vie en plus |
+| Artificier | Tes bombes explosent 40 % plus large ; les explosions te font moitié moins |
+| Anguille | Tu t'échappes deux fois plus vite quand on te chope |
+| Réflexes | Tu reprends le contrôle 35 % plus vite après un coup |
+
+Les compétences sont définies dans `SKILLS` et appliquées par `applySkills` (`public/game.js`), côté serveur comme dans la prédiction du client.
+
 ## Commandes
 
 | Contrôle  | Bouger / sauter | Pousser | Choper / lancer |
 |-----------|-----------------|---------|-----------------|
 | Clavier 1 | ZQSD ou WASD    | F       | G               |
 | Clavier 2 | Flèches         | N       | M               |
+
+Les touches des deux claviers se changent dans l'onglet **Touches** du menu ; elles restent enregistrées dans le navigateur.
 | Manette   | Stick + A       | X / RB  | B / LB          |
 
 En ligne, tous ces contrôles pilotent ton personnage.
