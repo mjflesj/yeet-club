@@ -82,7 +82,7 @@ Les compétences sont définies dans `SKILLS` et appliquées par `applySkills` (
 | Clavier 1 | ZQSD ou WASD    | F       | G               |
 | Clavier 2 | Flèches         | N       | M               |
 
-Les touches des deux claviers se changent dans l'onglet **Touches** du menu ; elles restent enregistrées dans le navigateur.
+Les touches des deux claviers se changent dans l'onglet **Touches** du menu, y compris avec les boutons de la souris (gauche, droit, molette, boutons latéraux) ; elles restent enregistrées dans le navigateur.
 | Manette   | Stick + A       | X / RB  | B / LB          |
 
 En ligne, tous ces contrôles pilotent ton personnage.

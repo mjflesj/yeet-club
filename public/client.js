@@ -48,6 +48,39 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys.delete(e.code); });
 addEventListener('blur', () => keys.clear());
 
+/* ---------- Boutons de la souris ----------
+   Ils se comportent comme des touches : Mouse0 (gauche), Mouse1 (molette),
+   Mouse2 (droit), Mouse3 / Mouse4 (boutons latéraux). Seule une vraie souris
+   compte : les taps sur téléphone sont ignorés. */
+const MOUSE_BITS = [[1, 'Mouse0'], [4, 'Mouse1'], [2, 'Mouse2'], [8, 'Mouse3'], [16, 'Mouse4']];
+let swallowClick = false;
+function syncMouse(e) {
+  for (const [bit, code] of MOUSE_BITS) { if (e.buttons & bit) keys.add(code); else keys.delete(code); }
+}
+function mouseBound(code) { return boundCodes().has(code); }
+addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'mouse') return;
+  if (capture) {
+    e.preventDefault(); e.stopPropagation();
+    swallowClick = true;                 // le clic qui suit ne doit pas relancer la capture
+    assignCapture('Mouse' + e.button, null);
+    return;
+  }
+  syncMouse(e);
+  if (ui === 'play' && mouseBound('Mouse' + e.button) && !e.target.closest('button')) e.preventDefault();
+}, true);
+addEventListener('pointermove', e => { if (e.pointerType === 'mouse') syncMouse(e); });
+addEventListener('pointerup', e => {
+  if (e.pointerType !== 'mouse') return;
+  syncMouse(e);
+  // empêche « Précédent / Suivant » du navigateur quand ces boutons servent au jeu
+  if ((e.button === 3 || e.button === 4) && (ui === 'play' || mouseBound('Mouse' + e.button))) e.preventDefault();
+});
+addEventListener('mouseup', e => { if ((e.button === 3 || e.button === 4) && (ui === 'play' || mouseBound('Mouse' + e.button))) e.preventDefault(); });
+addEventListener('click', e => { if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+addEventListener('auxclick', e => { if (ui === 'play' || swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+addEventListener('contextmenu', e => { if (ui === 'play' || capture || swallowClick || mouseBound('Mouse2')) e.preventDefault(); });
+
 /* ---------- Touches du clavier (modifiables) ---------- */
 const ACTIONS = [
   { k: 'l', name: 'Gauche' }, { k: 'r', name: 'Droite' }, { k: 'u', name: 'Sauter' },
@@ -73,6 +106,7 @@ function boundCodes() { return new Set([...Object.values(KB.kb1), ...Object.valu
 let layoutMap = null;
 try { navigator.keyboard && navigator.keyboard.getLayoutMap().then(m => { layoutMap = m; renderKeys(); }).catch(() => {}); } catch {}
 const SPECIAL = {
+  Mouse0: 'Clic gauche', Mouse1: 'Clic molette', Mouse2: 'Clic droit', Mouse3: 'Souris arrière', Mouse4: 'Souris avant',
   ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Space: 'Espace', Enter: 'Entrée',
   ShiftLeft: 'Maj G', ShiftRight: 'Maj D', ControlLeft: 'Ctrl G', ControlRight: 'Ctrl D', AltLeft: 'Alt', AltRight: 'Alt Gr',
   Tab: 'Tab', Backspace: '⌫', CapsLock: 'Verr Maj', NumpadEnter: 'Entrée (pavé)',
@@ -90,16 +124,19 @@ function keyLabel(code) {
 let capture = null;        // { sch, k, btn } pendant qu'on attend une touche
 function onCaptureKey(e) {
   e.preventDefault(); e.stopPropagation();
+  if (e.code === 'Escape') { capture = null; renderKeys(); return; }
+  assignCapture(e.code, e.key);
+}
+// Assigne la touche (ou le bouton de souris) à l'action en attente
+function assignCapture(code, key) {
   const { sch, k } = capture;
   capture = null;
-  if (e.code !== 'Escape') {
-    if (e.key && e.key.length === 1 && e.key !== ' ') keyNames[e.code] = e.key.toUpperCase();
-    const old = KB[sch][k];
-    // si la touche sert déjà ailleurs, les deux actions s'échangent
-    for (const s2 of ['kb1', 'kb2']) for (const a of ACTIONS) if (KB[s2][a.k] === e.code) KB[s2][a.k] = old;
-    KB[sch][k] = e.code;
-    saveKeys();
-  }
+  if (key && key.length === 1 && key !== ' ') keyNames[code] = key.toUpperCase();
+  const old = KB[sch][k];
+  // si la touche sert déjà ailleurs, les deux actions s'échangent
+  for (const s2 of ['kb1', 'kb2']) for (const a of ACTIONS) if (KB[s2][a.k] === code) KB[s2][a.k] = old;
+  KB[sch][k] = code;
+  saveKeys();
   renderKeys();
 }
 function renderKeys() {
