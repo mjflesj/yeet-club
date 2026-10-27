@@ -40,6 +40,10 @@ node -v
 echo "==> Utilisateur et code du jeu"
 id yeet >/dev/null 2>&1 || useradd --system --home "$DIR" --shell /usr/sbin/nologin yeet
 if [ -d "$DIR/.git" ]; then
+  if [ -n "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]; then
+    echo "ARRÊT : des fichiers ont été modifiés directement dans $DIR. Envoie-les sur GitHub avant de relancer ce script."
+    exit 1
+  fi
   git -C "$DIR" fetch --depth 1 origin main
   git -C "$DIR" reset --hard origin/main
 else
