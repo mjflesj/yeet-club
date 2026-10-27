@@ -57,7 +57,7 @@ PORT=3000
 HOST=127.0.0.1
 # Version Android : empreinte SHA-256 de la clé de signature Google Play
 # (Play Console → Configuration → Intégrité de l'application → Signature d'application)
-ANDROID_PACKAGE=io.github.mjflesj.yeetclub
+ANDROID_PACKAGE=io.mjflesj.yeetclub
 ANDROID_CERT_SHA256=
 CONF
 fi

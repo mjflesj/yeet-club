@@ -14,7 +14,7 @@ const Yeet = require('./public/game.js');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 // Version Android (Trusted Web Activity) : prouve que le site appartient à l'appli
-const ANDROID_PACKAGE = process.env.ANDROID_PACKAGE || 'io.github.mjflesj.yeetclub';
+const ANDROID_PACKAGE = process.env.ANDROID_PACKAGE || 'io.mjflesj.yeetclub';
 const ANDROID_CERT_SHA256 = (process.env.ANDROID_CERT_SHA256 || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
 const PUBLIC = path.join(__dirname, 'public');
 const TICK = 1 / 60;            // un tick = une entrée par joueur = 2 pas de simulation

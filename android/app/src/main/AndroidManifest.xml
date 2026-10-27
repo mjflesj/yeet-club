@@ -26,7 +26,7 @@
             <meta-data android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE" android:resource="@drawable/splash" />
             <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR" android:resource="@color/background" />
             <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION" android:value="300" />
-            <meta-data android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY" android:value="io.github.mjflesj.yeetclub.fileprovider" />
+            <meta-data android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY" android:value="io.mjflesj.yeetclub.fileprovider" />
             <meta-data android:name="android.support.customtabs.trusted.DISPLAY_MODE" android:value="immersive" />
             <meta-data android:name="android.support.customtabs.trusted.SCREEN_ORIENTATION" android:value="landscape" />
 
@@ -47,7 +47,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="io.github.mjflesj.yeetclub.fileprovider"
+            android:authorities="io.mjflesj.yeetclub.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

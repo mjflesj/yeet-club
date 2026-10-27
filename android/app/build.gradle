@@ -13,11 +13,11 @@ def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
 def hasSigningKey = keystorePath && file(keystorePath).exists()
 
 android {
-    namespace 'io.github.mjflesj.yeetclub'
+    namespace 'io.mjflesj.yeetclub'
     compileSdk 36
 
     defaultConfig {
-        applicationId 'io.github.mjflesj.yeetclub'
+        applicationId 'io.mjflesj.yeetclub'
         minSdk 24
         targetSdk 36
         versionCode appVersionCode

@@ -40,7 +40,7 @@ Un hébergement **mutualisé** OVH ne convient pas : il ne peut pas faire tourne
 
 ## Version Android (Google Play)
 
-Le dossier `android/` contient une application Android de type *Trusted Web Activity* : elle ouvre le jeu hébergé sur ton serveur, en plein écran et sans barre d'adresse. Nom du package : `io.github.mjflesj.yeetclub`.
+Le dossier `android/` contient une application Android de type *Trusted Web Activity* : elle ouvre le jeu hébergé sur ton serveur, en plein écran et sans barre d'adresse. Nom du package : `io.mjflesj.yeetclub`.
 
 Elle est construite par GitHub Actions (onglet **Actions** → **Android** → *Run workflow*) :
 
