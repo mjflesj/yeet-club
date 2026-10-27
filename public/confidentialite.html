@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Règles de confidentialité — Yeet Club</title>
+<meta name="description" content="Règles de confidentialité du jeu YEET CLUB (site web et application Android).">
+<meta name="theme-color" content="#100d17">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;600&display=swap">
+<style>
+/* Layout : une colonne de lecture étroite sur le fond du jeu. */
+:root{
+  --asphalt:#100d17;
+  --panel:#17131f;
+  --hazard:#ffc93c;
+  --chalk:#f3efe6;
+  --muted:#a59cb8;
+  --line:#3a3150;
+  --f-display:'Bungee','Arial Black',Impact,sans-serif;
+  --f-label:'Barlow Condensed','Arial Narrow',system-ui,sans-serif;
+  --f-body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--asphalt);color:var(--chalk);font-family:var(--f-body);font-size:17px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.band{height:10px;background:repeating-linear-gradient(-45deg,var(--hazard) 0 14px,#16121f 14px 28px);margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)))}
+main{max-width:68ch;margin:0 auto;padding-block:36px 64px}
+.back{font-family:var(--f-label);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--hazard);text-decoration:none}
+.back:hover,.back:focus-visible{text-decoration:underline}
+h1{font-family:var(--f-display);font-weight:400;font-size:clamp(30px,7vw,48px);line-height:1.05;margin:18px 0 8px;text-wrap:balance}
+.meta{font-family:var(--f-label);color:var(--muted);letter-spacing:.06em;margin:0 0 28px}
+h2{font-family:var(--f-label);font-weight:700;font-size:22px;letter-spacing:.06em;text-transform:uppercase;color:var(--hazard);margin:36px 0 8px;text-wrap:balance}
+p,li{max-width:65ch}
+ul{padding-left:1.2em}
+li{margin-block:6px}
+strong{color:var(--chalk)}
+a{color:var(--hazard)}
+a:focus-visible{outline:3px solid var(--hazard);outline-offset:2px}
+.summary{background:var(--panel);border:2px solid var(--line);border-radius:6px;padding:16px 20px;margin-block:8px 0}
+.summary p{margin:0}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:16px;min-width:520px}
+th,td{text-align:left;vertical-align:top;padding:10px 8px;border-bottom:1px solid var(--line)}
+th{font-family:var(--f-label);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em;color:var(--chalk);background:#ffffff10;padding:1px 5px;border-radius:3px}
+footer{margin-top:48px;color:var(--muted);font-family:var(--f-label);letter-spacing:.06em}
+</style>
+</head>
+<body>
+<div class="band" aria-hidden="true"></div>
+<main>
+  <a class="back" href="/">← Retour au jeu</a>
+  <h1>Règles de confidentialité</h1>
+  <p class="meta">YEET CLUB · site web et application Android · en vigueur au 27 octobre 2026</p>
+
+  <div class="summary">
+    <p><strong>En bref :</strong> pas de compte, pas de publicité, pas de statistiques, pas de traçage. Le jeu utilise seulement le pseudo que tu choisis pendant une partie en ligne, et l'adresse IP nécessaire pour que ton appareil se connecte au serveur. Rien n'est vendu ni partagé à des fins commerciales.</p>
+  </div>
+
+  <h2>Qui est responsable</h2>
+  <p>Le jeu YEET CLUB (le site web et l'application Android <code>io.mjflesj.yeetclub</code>) est édité par <strong>Yeet Club</strong>. Pour toute question sur tes données : <a href="mailto:isaac.fuseaubourland@gmail.com">isaac.fuseaubourland@gmail.com</a>.</p>
+
+  <h2>Les données utilisées</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Donnée</th><th>Pourquoi</th><th>Où et combien de temps</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Pseudo choisi pour jouer en ligne</td>
+          <td>L'afficher aux autres joueurs de la salle</td>
+          <td>Mémoire du serveur, seulement pendant que la salle existe. Effacé quand tout le monde a quitté la salle. Jamais écrit sur disque.</td>
+        </tr>
+        <tr>
+          <td>Compétences choisies et actions de jeu (déplacements, coups)</td>
+          <td>Faire tourner la partie en ligne</td>
+          <td>Mémoire du serveur, le temps de la partie. Rien n'est enregistré.</td>
+        </tr>
+        <tr>
+          <td>Adresse IP et informations techniques de connexion (date, page demandée, navigateur)</td>
+          <td>Établir la connexion, assurer la sécurité et diagnostiquer les pannes</td>
+          <td>Journaux techniques du serveur web, hébergé par OVHcloud. Supprimés automatiquement après 15 jours au plus.</td>
+        </tr>
+        <tr>
+          <td>Réglages : pseudo, compétences préférées, touches du clavier</td>
+          <td>Retrouver tes réglages à la prochaine partie</td>
+          <td>Uniquement sur ton appareil (stockage local du navigateur). Ils ne sont jamais envoyés au serveur, sauf le pseudo et les compétences quand tu rejoins une salle.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Le jeu ne demande aucune autre donnée : pas d'adresse e-mail, pas de nom réel, pas de contacts, pas de localisation, pas de photos, pas de micro. Il n'utilise pas de cookies. Le mode « Même écran » fonctionne entièrement sur ton appareil.</p>
+
+  <h2>Services tiers</h2>
+  <ul>
+    <li><strong>Google Fonts</strong> : les polices du jeu sont chargées depuis les serveurs de Google, qui reçoivent donc ton adresse IP. Voir les <a href="https://policies.google.com/privacy?hl=fr" rel="noopener" target="_blank">règles de confidentialité de Google</a>.</li>
+    <li><strong>Application Android</strong> : elle affiche le jeu dans Chrome (ou le navigateur compatible installé sur ton téléphone), selon la technologie « Trusted Web Activity ». Les règles de confidentialité de ce navigateur s'appliquent à son fonctionnement.</li>
+    <li><strong>Google Play</strong> : le téléchargement de l'application est géré par Google Play, selon ses propres règles. Le jeu ne reçoit de Google Play aucune donnée personnelle te concernant.</li>
+    <li><strong>OVHcloud</strong> héberge le serveur et agit comme sous-traitant technique.</li>
+  </ul>
+
+  <h2>Partage</h2>
+  <p>Ton pseudo et tes compétences sont visibles par les autres joueurs de la même salle. Aucune donnée n'est vendue, louée ou partagée avec des annonceurs ou des courtiers en données.</p>
+
+  <h2>Enfants</h2>
+  <p>Le jeu peut être utilisé sans fournir de donnée personnelle. Il ne collecte pas sciemment d'informations sur les enfants au-delà de ce qui est décrit ici. Comme le pseudo est visible des autres joueurs, conseille aux plus jeunes de ne pas y mettre leur vrai nom. Un parent peut nous écrire à tout moment à l'adresse ci-dessus.</p>
+
+  <h2>Tes droits</h2>
+  <p>Conformément au RGPD, tu peux demander l'accès à tes données, leur rectification ou leur suppression, et t'opposer à leur traitement, en écrivant à <a href="mailto:isaac.fuseaubourland@gmail.com">isaac.fuseaubourland@gmail.com</a>. Comme le jeu ne garde presque rien, la plupart des demandes se règlent d'elles-mêmes. Pour effacer tes réglages, vide les données du site dans ton navigateur ou désinstalle l'application. Tu peux aussi adresser une réclamation à la CNIL (<a href="https://www.cnil.fr" rel="noopener" target="_blank">cnil.fr</a>).</p>
+
+  <h2>Sécurité</h2>
+  <p>Les échanges entre ton appareil et le serveur sont chiffrés (HTTPS). Le serveur ne conserve aucune base de données de joueurs.</p>
+
+  <h2>Changements</h2>
+  <p>Si ces règles changent, la nouvelle version sera publiée sur cette page avec sa date d'entrée en vigueur.</p>
+
+  <footer>Règle n°1 : tout le monde parle du Yeet Club. Mais pas de tes données.</footer>
+</main>
+</body>
+</html>

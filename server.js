@@ -40,6 +40,7 @@ const server = http.createServer((req, res) => {
   let url;
   try { url = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); res.end(); return; }
   if (url === '/') url = '/index.html';
+  if (url === '/confidentialite' || url === '/privacy') url = '/confidentialite.html';
   const file = path.normalize(path.join(PUBLIC, url));
   if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {

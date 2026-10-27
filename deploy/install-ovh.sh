@@ -93,6 +93,7 @@ server {
     listen 80;
     listen [::]:80;
     server_name $DOMAIN;
+    # journaux techniques : la rotation de nginx (quotidienne, 14 fichiers) les supprime après 15 jours au plus
 
     location / {
         proxy_pass http://127.0.0.1:3000;
