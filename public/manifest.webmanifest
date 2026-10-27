@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "YEET CLUB — La bagarre physique",
+  "short_name": "Yeet Club",
+  "description": "Pousse, chope et lance tes potes hors du ring. Jusqu'à 4 joueurs en ligne ou sur le même écran.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#100d17",
+  "theme_color": "#100d17",
+  "categories": ["games"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

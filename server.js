@@ -12,6 +12,10 @@ const { WebSocketServer } = require('ws');
 const Yeet = require('./public/game.js');
 
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+// Version Android (Trusted Web Activity) : prouve que le site appartient à l'appli
+const ANDROID_PACKAGE = process.env.ANDROID_PACKAGE || 'io.github.mjflesj.yeetclub';
+const ANDROID_CERT_SHA256 = (process.env.ANDROID_CERT_SHA256 || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
 const PUBLIC = path.join(__dirname, 'public');
 const TICK = 1 / 60;            // un tick = une entrée par joueur = 2 pas de simulation
 const MAX_QUEUE = 8;             // au-delà, on jette les entrées les plus vieilles
@@ -19,12 +23,20 @@ const MAX_SEATS = 4;
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
-  '.ico': 'image/x-icon', '.json': 'application/json',
+  '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
 };
 
 /* ---------- Fichiers statiques ---------- */
 const server = http.createServer((req, res) => {
   if (req.url === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('ok'); return; }
+  if (req.url === '/.well-known/assetlinks.json') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+    res.end(JSON.stringify(ANDROID_CERT_SHA256.length ? [{
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: { namespace: 'android_app', package_name: ANDROID_PACKAGE, sha256_cert_fingerprints: ANDROID_CERT_SHA256 },
+    }] : []));
+    return;
+  }
   let url;
   try { url = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); res.end(); return; }
   if (url === '/') url = '/index.html';
@@ -219,4 +231,4 @@ setInterval(() => {
   }
 }, 15000);
 
-server.listen(PORT, () => console.log(`YEET CLUB en ligne sur http://localhost:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`YEET CLUB en ligne sur http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));

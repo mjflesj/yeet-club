@@ -1,0 +1,64 @@
+// YEET CLUB — application Android (Trusted Web Activity).
+// L'appli ouvre le jeu hébergé sur ton serveur, en plein écran et sans barre d'adresse.
+plugins {
+    id 'com.android.application'
+}
+
+// Adresse du serveur (sans https://). À fournir via -PtwaHost=... ou la variable TWA_HOST.
+def twaHost = (project.findProperty('twaHost') ?: System.getenv('TWA_HOST') ?: 'yeetclub.example.com').toString().trim()
+def appVersionCode = (System.getenv('VERSION_CODE') ?: '1').toInteger()
+
+// Clé de signature (fournie par les secrets GitHub, jamais dans le dépôt)
+def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def hasSigningKey = keystorePath && file(keystorePath).exists()
+
+android {
+    namespace 'io.github.mjflesj.yeetclub'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'io.github.mjflesj.yeetclub'
+        minSdk 21
+        targetSdk 36
+        versionCode appVersionCode
+        versionName "1.0.${appVersionCode}"
+
+        manifestPlaceholders = [
+            hostName  : twaHost,
+            defaultUrl: "https://${twaHost}/",
+        ]
+        resValue 'string', 'asset_statements',
+            "[{ \\\"relation\\\": [\\\"delegate_permission/common.handle_all_urls\\\"], \\\"target\\\": { \\\"namespace\\\": \\\"web\\\", \\\"site\\\": \\\"https://${twaHost}\\\" } }]"
+    }
+
+    signingConfigs {
+        if (hasSigningKey) {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (hasSigningKey) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        resValues true
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

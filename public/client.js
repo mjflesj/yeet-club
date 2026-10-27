@@ -998,6 +998,11 @@ setTab('online');
 showMenu();
 if (hashCode && nameInput.value) setStatus('netStatus', `Invitation reçue pour la salle ${hashCode.toUpperCase()}. Clique sur Rejoindre.`);
 else if (hashCode) setStatus('netStatus', `Invitation reçue pour la salle ${hashCode.toUpperCase()}. Choisis un pseudo puis clique sur Rejoindre.`);
+// Installation (application web et version Android) : copie hors ligne du jeu
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+
 // accès de débogage depuis la console
 window.yeetDebug = { pred, net, view: () => cur };
 requestAnimationFrame(frame);

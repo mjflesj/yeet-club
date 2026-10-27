@@ -22,6 +22,46 @@ PORT=8080 npm start
 
 Pour jouer en ligne avec des amis, héberge le serveur sur une plateforme Node qui accepte les WebSockets (Render, Railway, Fly.io, un VPS…) : commande de démarrage `npm start`, contrôle de santé sur `/health`. GitHub Pages ne suffit pas, car il ne peut pas faire tourner le serveur.
 
+## Installer sur un serveur OVH (VPS)
+
+1. Dans l'espace client OVH, fais pointer ton nom de domaine (ou un sous-domaine, ex. `yeetclub.mondomaine.fr`) vers l'adresse IP du VPS : enregistrement DNS de type **A**.
+2. Connecte-toi au serveur en SSH, puis :
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mjflesj/yeet-club/main/deploy/install-ovh.sh -o install-ovh.sh
+sudo bash install-ovh.sh yeetclub.mondomaine.fr ton@email.fr
+```
+
+Le script installe Node.js, nginx et un certificat HTTPS gratuit (Let's Encrypt), puis lance le jeu comme service (`yeet-club`) qui redémarre tout seul. Réglages dans `/etc/yeet-club.env`.
+
+Mettre à jour après un changement sur GitHub : `sudo bash /opt/yeet-club/deploy/update.sh`
+
+Un hébergement **mutualisé** OVH ne convient pas : il ne peut pas faire tourner Node.js ni les WebSockets. Il faut un VPS (ou un serveur dédié / Public Cloud).
+
+## Version Android (Google Play)
+
+Le dossier `android/` contient une application Android de type *Trusted Web Activity* : elle ouvre le jeu hébergé sur ton serveur, en plein écran et sans barre d'adresse. Nom du package : `io.github.mjflesj.yeetclub`.
+
+Elle est construite par GitHub Actions (onglet **Actions** → **Android** → *Run workflow*) :
+
+1. **Adresse du serveur** : *Settings → Secrets and variables → Actions → Variables* → `TWA_HOST` = ton domaine, sans `https://` (ex. `yeetclub.mondomaine.fr`).
+2. **Clé d'envoi** (une seule fois, à garder précieusement) :
+   ```bash
+   keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
+   base64 -w0 upload.jks   # à copier dans le secret ANDROID_KEYSTORE_BASE64
+   ```
+   Secrets à créer : `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`upload`), `ANDROID_KEY_PASSWORD`.
+3. Lance le workflow : il produit un `.aab` (à envoyer dans la Play Console) et un `.apk` (à installer sur un téléphone pour tester).
+4. **Lier le site à l'appli** : dans la Play Console, *Intégrité de l'application → Signature d'application*, copie l'empreinte **SHA-256 de la clé de signature d'application**, et mets-la dans `/etc/yeet-club.env` sur le serveur :
+   ```
+   ANDROID_CERT_SHA256=AA:BB:CC:...
+   ```
+   puis `sudo systemctl restart yeet-club`. Le serveur publie alors `/.well-known/assetlinks.json`. Sans cette étape, l'appli s'ouvre avec une barre d'adresse en haut. Pour tester un APK signé avec ta clé d'envoi, ajoute aussi son empreinte (affichée dans le résumé du workflow), séparée par une virgule.
+
+Images pour la fiche Play Store : `store/icon-512.png` et `store/feature-graphic-1024x500.png`.
+
+Le jeu est aussi installable comme application web (manifeste + service worker) : « Ajouter à l'écran d'accueil » sur iPhone et Android.
+
 ## Architecture
 
 ```
@@ -29,6 +69,10 @@ server.js          serveur HTTP (fichiers de public/) + WebSocket (salles)
 public/game.js     simulation du jeu, partagée entre le serveur et le navigateur
 public/client.js   rendu canvas, entrées, son, menus, connexion au serveur
 public/index.html  page et styles
+public/sw.js       copie hors ligne (application web installable)
+android/           application Android (Trusted Web Activity)
+deploy/            installation et mise à jour sur un VPS OVH
+store/             images pour la fiche Google Play
 ```
 
 Le serveur fait autorité : il simule chaque partie à 120 Hz et diffuse l'état 60 fois par seconde. Si un joueur se déconnecte en pleine partie, un bot reprend son personnage.
