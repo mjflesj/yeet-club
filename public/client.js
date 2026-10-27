@@ -2,7 +2,8 @@
 (() => {
 'use strict';
 const { W, H, COLORS, PLATS } = Yeet;
-const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+const canvas = document.getElementById('c');
+let ctx = canvas.getContext('2d');
 const stage = document.getElementById('stage');
 const $ = id => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -24,11 +25,13 @@ let localCtrls = [];
 /* ---------- Affichage ---------- */
 let dpr = 1, sc = 1, ox = 0, oy = 0;
 function resize() {
-  dpr = Math.min(2, window.devicePixelRatio || 1);
+  dpr = Math.min(isTouch ? 1.5 : 2, window.devicePixelRatio || 1);
   const cw = stage.clientWidth, ch = stage.clientHeight;
   canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
   sc = Math.min(cw / W, ch / H); ox = (cw - W * sc) / 2; oy = (ch - H * sc) / 2;
+  bgDirty = true;
 }
+let bgDirty = true;
 addEventListener('resize', resize); resize();
 
 /* ---------- Entrées ---------- */
@@ -48,14 +51,52 @@ const KB = {
   kb1: { l: ['KeyA'], r: ['KeyD'], u: ['KeyW', 'Space'], d: ['KeyS'], a: ['KeyF'], b: ['KeyG'] },
   kb2: { l: ['ArrowLeft'], r: ['ArrowRight'], u: ['ArrowUp'], d: ['ArrowDown'], a: ['k:n', 'Numpad1'], b: ['k:m', 'Numpad2'] },
 };
-const touch = { l: false, r: false, d: false, j: false, a: false, b: false };
-document.querySelectorAll('#touch button').forEach(btn => {
+// Tactile : joystick flottant à gauche, boutons à droite (multi-touch)
+const touch = { l: false, r: false, d: false, ju: false, j: false, a: false, b: false };
+const stickZone = $('stickZone'), stickBase = $('stickBase'), stickKnob = $('stickKnob');
+const stick = { id: null, x: 0, y: 0 };
+function stickSet(dx, dy) {
+  const L = Math.hypot(dx, dy), m = 50;
+  if (L > m) { dx = dx / L * m; dy = dy / L * m; }
+  stickKnob.style.transform = `translate(${dx}px,${dy}px)`;
+  touch.l = dx < -14; touch.r = dx > 14; touch.d = dy > 30; touch.ju = dy < -32;
+}
+stickZone.addEventListener('pointerdown', e => {
+  if (stick.id !== null) return;
+  e.preventDefault(); initAudio();
+  stick.id = e.pointerId; stick.x = e.clientX; stick.y = e.clientY;
+  const r = stage.getBoundingClientRect();
+  stickBase.style.left = (e.clientX - r.left) + 'px'; stickBase.style.top = (e.clientY - r.top) + 'px';
+  stickBase.classList.add('on'); stickSet(0, 0);
+  try { stickZone.setPointerCapture(e.pointerId); } catch {}
+});
+stickZone.addEventListener('pointermove', e => { if (e.pointerId === stick.id) stickSet(e.clientX - stick.x, e.clientY - stick.y); });
+const stickEnd = e => {
+  if (e.pointerId !== stick.id) return;
+  stick.id = null; stickSet(0, 0); stickBase.classList.remove('on');
+  stickBase.style.left = ''; stickBase.style.top = '';
+};
+stickZone.addEventListener('pointerup', stickEnd); stickZone.addEventListener('pointercancel', stickEnd);
+document.querySelectorAll('#btns button').forEach(btn => {
   const k = btn.dataset.k;
-  const on = e => { e.preventDefault(); touch[k] = true; btn.classList.add('on'); };
+  const on = e => { e.preventDefault(); touch[k] = true; btn.classList.add('on'); if (navigator.vibrate) try { navigator.vibrate(8); } catch {} };
   const off = e => { e.preventDefault(); touch[k] = false; btn.classList.remove('on'); };
   btn.addEventListener('pointerdown', on);
   btn.addEventListener('pointerup', off); btn.addEventListener('pointercancel', off); btn.addEventListener('pointerleave', off);
+  btn.addEventListener('contextmenu', e => e.preventDefault());
 });
+function resetTouch() { for (const k in touch) touch[k] = false; document.querySelectorAll('#btns button').forEach(b => b.classList.remove('on')); }
+function goFullscreen() {
+  if (!isTouch) return;
+  try {
+    const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req && !document.fullscreenElement) {
+      const r = req.call(el);
+      const lock = () => { try { screen.orientation.lock('landscape').catch(() => {}); } catch {} };
+      if (r && r.then) r.then(lock).catch(() => {}); else lock();
+    }
+  } catch {}
+}
 
 function getPads() { try { return navigator.getGamepads ? navigator.getGamepads() : []; } catch { return []; } }
 function rawInput(ctrl) {
@@ -73,7 +114,7 @@ function rawInput(ctrl) {
       r.a = bt(2) || bt(5) || bt(7); r.b = bt(1) || bt(3) || bt(4) || bt(6);
     }
   } else if (ctrl === 'touch') {
-    r.x = (touch.r ? 1 : 0) - (touch.l ? 1 : 0); r.up = touch.j; r.down = touch.d; r.a = touch.a; r.b = touch.b;
+    r.x = (touch.r ? 1 : 0) - (touch.l ? 1 : 0); r.up = touch.j || touch.ju; r.down = touch.d; r.a = touch.a; r.b = touch.b;
   }
   return r;
 }
@@ -139,7 +180,7 @@ function fireEvents(list) {
         break;
       }
       case 'p': pops.push({ x: e[1], y: e[2], text: e[3], col: e[4], big: !!e[5], life: e[5] ? 1.4 : 0.8, max: e[5] ? 1.4 : 0.8 }); break;
-      case 's': sfx(e[1]); break;
+      case 's': if (!(mode === 'online' && pred.p && e[2] === net.you && (e[1] === 'jump' || e[1] === 'whoosh'))) sfx(e[1]); break;
       case 'k': shake = Math.min(30, shake + e[1]); break;
     }
   }
@@ -154,7 +195,7 @@ function updateFx(dt) {
 }
 
 /* ---------- Interpolation des instantanés en ligne ---------- */
-const INTERP_MS = 100;
+const INTERP_MS = 50;   // retard d'affichage des autres joueurs (3 instantanés à 60 Hz)
 function lerp(a, b, t) { return a + (b - a) * t; }
 function onlineView(now) {
   if (!snaps.length) return cur;
@@ -177,10 +218,54 @@ function onlineView(now) {
   return v;
 }
 
+/* ---------- Prédiction de mon personnage ----------
+   Mes entrées sont appliquées tout de suite à une copie locale de mon
+   personnage. À chaque instantané, on repart de l'état du serveur et on
+   rejoue les entrées qu'il n'a pas encore traitées. L'écart éventuel est
+   lissé pour ne pas voir de saut. */
+const pred = { p: null, hist: [], seq: 0, acc: 0, ox: 0, oy: 0, lastInp: null };
+const NO_IN = { x: 0, up: false, down: false, a: false, b: false };
+function resetPred() { pred.p = null; pred.hist = []; pred.acc = 0; pred.ox = pred.oy = 0; }
+function predTick(inp) {
+  if (!pred.p) return;
+  let fx = null;
+  for (let k = 0; k < 2; k++) fx = Yeet.predictStep(pred.p, inp, Yeet.STEP) || fx;
+  if (fx === 'jump') sfx('jump');
+  if (fx === 'shove') sfx('whoosh');
+}
+function reconcile(v) {
+  const me = v.p.find(q => q.i === net.you);
+  if (!me || !me.a || me.hb) { pred.p = null; pred.ox = pred.oy = 0; return; }
+  const ackEntry = pred.hist.find(h => h.s === me.q);
+  pred.hist = pred.hist.filter(h => h.s > me.q);
+  const old = pred.p;
+  pred.p = Yeet.restorePlayer(me, ackEntry ? ackEntry.inp : (old ? old.prev : NO_IN));
+  for (const h of pred.hist) for (let k = 0; k < 2; k++) Yeet.predictStep(pred.p, h.inp, Yeet.STEP);
+  if (old) {
+    pred.ox += old.x - pred.p.x; pred.oy += old.y - pred.p.y;
+    if (Math.hypot(pred.ox, pred.oy) > 140) pred.ox = pred.oy = 0;
+  }
+}
+// Remplace mon personnage (et ce que je porte) par la version prédite
+function applyPred(v) {
+  if (!pred.p) return v;
+  const idx = v.p.findIndex(q => q.i === net.you);
+  if (idx < 0) return v;
+  const q = pred.p, x = q.x + pred.ox, y = q.y + pred.oy;
+  const me = { ...v.p[idx], x, y, vx: q.vx, vy: q.vy, f: q.face, g: q.ground ? 1 : 0, sh: Math.max(0, q.shoveT), sq: q.squash, hs: q.hitstun > 0 ? 1 : 0 };
+  const out = { ...v, p: v.p.slice(), it: v.it.map(it => {
+    if (it.h !== net.you) return it;
+    return it.t === 'bat' ? { ...it, x: x + me.f * 22, y: y - 6 } : { ...it, x, y: y - 37 };
+  }) };
+  out.p[idx] = me;
+  if (me.hk === 'p') out.p = out.p.map(o => o.hb && Math.abs(o.x - (v.p[idx].x)) < 4 ? { ...o, x, y: y - 36 } : o);
+  return out;
+}
+
 /* ---------- Rendu ---------- */
-let hazardPat = null;
+let hazardPat = null, hazardTile = null;
 function makePattern() {
-  const c = document.createElement('canvas'); c.width = c.height = 24;
+  const c = hazardTile = document.createElement('canvas'); c.width = c.height = 24;
   const g = c.getContext('2d');
   g.fillStyle = '#ffc93c'; g.fillRect(0, 0, 24, 24);
   g.fillStyle = '#16121f';
@@ -189,6 +274,30 @@ function makePattern() {
   hazardPat = ctx.createPattern(c, 'repeat');
 }
 
+// Le décor fixe (murs, lampes, plateformes) est dessiné une fois dans un canvas à part
+let bgCanvas = null;
+function buildBG() {
+  if (!hazardPat) return;
+  const s = dpr * sc;
+  bgCanvas = bgCanvas || document.createElement('canvas');
+  bgCanvas.width = Math.max(1, Math.round(W * s)); bgCanvas.height = Math.max(1, Math.round(H * s));
+  const main = ctx;
+  ctx = bgCanvas.getContext('2d');
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  hazardPat = ctx.createPattern(hazardTile, 'repeat');
+  drawBG(); drawPlats();
+  ctx = main;
+  bgDirty = false;
+}
+function drawNeon() {
+  const flick = (Math.sin(time * 23) > 0.96 || Math.sin(time * 7.1) > 0.995) ? 0.08 : 0.32;
+  ctx.save();
+  ctx.font = '86px Bungee, Impact, sans-serif'; ctx.textAlign = 'center';
+  if (!isTouch) { ctx.shadowColor = '#ff3d7f'; ctx.shadowBlur = 30; }
+  ctx.strokeStyle = `rgba(255,61,127,${flick})`; ctx.lineWidth = 3;
+  ctx.strokeText('YEET CLUB', W / 2, 150);
+  ctx.restore();
+}
 function drawBG() {
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, '#221c30'); g.addColorStop(0.65, '#16121f'); g.addColorStop(1, '#07060b');
@@ -199,13 +308,6 @@ function drawBG() {
   for (const x of [40, 400, 840, 1200]) ctx.fillRect(x, 180, 46, 30);
   ctx.fillStyle = '#ffc93c22'; ctx.font = '700 22px Barlow Condensed, sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('P-2', 48, 202); ctx.fillText('B', 420, 202); ctx.fillText('C', 856, 202); ctx.fillText('P-2', 1206, 202);
-  const flick = (Math.sin(time * 23) > 0.96 || Math.sin(time * 7.1) > 0.995) ? 0.08 : 0.32;
-  ctx.save();
-  ctx.font = '86px Bungee, Impact, sans-serif'; ctx.textAlign = 'center';
-  ctx.shadowColor = '#ff3d7f'; ctx.shadowBlur = 30;
-  ctx.strokeStyle = `rgba(255,61,127,${flick})`; ctx.lineWidth = 3;
-  ctx.strokeText('YEET CLUB', W / 2, 150);
-  ctx.restore();
   ctx.save(); ctx.font = '600 20px Barlow Condensed, sans-serif'; ctx.fillStyle = '#ffffff1c'; ctx.textAlign = 'center';
   ctx.fillText('RÈGLE N°1 : TOUT LE MONDE PARLE DU YEET CLUB', W / 2, 186); ctx.restore();
   for (const x of [320, 640, 960]) {
@@ -350,8 +452,9 @@ function drawOffscreen(p) {
 }
 
 function drawHUD(v) {
-  const n = v.p.length, cw = 220, gap = 14, total = n * cw + (n - 1) * gap;
-  let x = (W - total) / 2; const y = H - 84;
+  const top = !touchEl.hidden;
+  const n = v.p.length, cw = top ? 200 : 220, gap = top ? 10 : 14, total = n * cw + (n - 1) * gap;
+  let x = (W - total) / 2; const y = top ? 8 : H - 84;
   for (const p of v.p) {
     const col = COLORS[p.i];
     ctx.save(); ctx.globalAlpha = p.o ? 0.4 : 1;
@@ -376,7 +479,9 @@ function render(v) {
   const s = dpr * sc, sh = reduceMotion ? 0 : shake;
   ctx.setTransform(s, 0, 0, s, dpr * ox + (Math.random() - 0.5) * sh * s, dpr * oy + (Math.random() - 0.5) * sh * s);
   ctx.save(); ctx.beginPath(); ctx.rect(-60, -60, W + 120, H + 120); ctx.clip();
-  drawBG(); drawPlats();
+  if (bgDirty || !bgCanvas) buildBG();
+  ctx.drawImage(bgCanvas, 0, 0, W, H);
+  drawNeon();
   const byI = i => v.p.find(p => p.i === i);
   for (const it of v.it) if (it.h < 0) drawItem(it, null);
   for (const p of v.p) if (!p.hb) drawPlayer(p, p.i === net.you && mode === 'online');
@@ -407,21 +512,26 @@ function render(v) {
 
 /* ---------- Écrans ---------- */
 const menuEl = $('menu'), endEl = $('end'), touchEl = $('touch'), pauseBtn = $('pause');
+function setBody() {
+  document.body.classList.toggle('playing', ui === 'play');
+  document.body.classList.toggle('touchui', !touchEl.hidden);
+}
+function showTouch(on) { touchEl.hidden = !on; resetTouch(); setBody(); }
 function showPlay() {
   ui = 'play'; menuEl.hidden = true; endEl.hidden = true; pauseBtn.hidden = false;
-  parts = []; pops = [];
+  parts = []; pops = []; setBody();
 }
 function startDemo() {
   mode = 'demo';
   lg = Yeet.createGame({ seats: [0, 1, 2, 3].map(() => ({ bot: true })), demo: true });
 }
 function showMenu() {
-  ui = 'menu'; menuEl.hidden = false; endEl.hidden = true; touchEl.hidden = true; pauseBtn.hidden = true;
+  ui = 'menu'; menuEl.hidden = false; endEl.hidden = true; pauseBtn.hidden = true; showTouch(false);
   startDemo();
   renderSlots();
 }
 function showEnd(r) {
-  ui = 'end'; endEl.hidden = false; touchEl.hidden = true; pauseBtn.hidden = true;
+  ui = 'end'; endEl.hidden = false; pauseBtn.hidden = true; showTouch(false);
   const w = r.players.find(p => p.i === r.winner);
   const h2 = $('winner');
   h2.textContent = w ? `${w.n} gagne` : 'Égalité';
@@ -508,13 +618,14 @@ function startLocal() {
     seats: slots.map((c, i) => c === 'off' ? null : { bot: c === 'bot', name: 'J' + (i + 1), label: CTRL_LABEL[c] }),
     stocks: stockCount,
   });
+  if (slots.includes('touch')) goFullscreen();
   mode = 'local'; showPlay();
-  touchEl.hidden = !slots.includes('touch');
+  showTouch(slots.includes('touch'));
 }
 $('startBtn').onclick = startLocal;
 
 /* ---------- En ligne ---------- */
-const net = { ws: null, queue: [], room: null, you: -1, host: false, lastIn: '' };
+const net = { ws: null, queue: [], room: null, you: -1, host: false };
 const nameInput = $('nameInput'), codeInput = $('codeInput');
 nameInput.value = store.get('yeet-name') || '';
 const hashCode = (location.hash.match(/^#([A-Za-z0-9]{4})$/) || [])[1];
@@ -557,12 +668,13 @@ function onNet(m) {
       break;
     case 'start':
       initAudio();
-      mode = 'online'; snaps = []; net.lastIn = ''; showPlay();
-      touchEl.hidden = !isTouch;
+      mode = 'online'; snaps = []; resetPred(); showPlay();
+      showTouch(isTouch);
       break;
     case 'snap':
       if (mode !== 'online') break;
       snaps.push({ t: performance.now(), v: m.v, e: m.e, fired: false });
+      reconcile(m.v);
       if (snaps.length > 30) snaps.splice(0, snaps.length - 30);
       break;
     case 'end':
@@ -608,7 +720,7 @@ function joinWith(msg) {
   const name = nameInput.value.trim();
   if (!name) { setStatus('netStatus', 'Choisis un pseudo avant de jouer.', true); nameInput.focus(); return; }
   store.set('yeet-name', name);
-  initAudio();
+  initAudio(); goFullscreen();
   netSend({ ...msg, name });
 }
 $('createBtn').onclick = () => joinWith({ t: 'create' });
@@ -622,7 +734,7 @@ nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') (codeInput.v
 $('leaveBtn').onclick = () => { netSend({ t: 'leave' }); net.room = null; history.replaceState(null, '', location.pathname); setTab('online'); };
 $('lStockDown').onclick = () => net.room && netSend({ t: 'stocks', n: net.room.stocks - 1 });
 $('lStockUp').onclick = () => net.room && netSend({ t: 'stocks', n: net.room.stocks + 1 });
-$('lobbyStart').onclick = () => netSend({ t: 'start' });
+$('lobbyStart').onclick = () => { goFullscreen(); netSend({ t: 'start' }); };
 $('copyBtn').onclick = async () => {
   const link = location.origin + location.pathname + '#' + (net.room ? net.room.code : '');
   try { await navigator.clipboard.writeText(link); $('copyBtn').textContent = 'Lien copié'; }
@@ -636,10 +748,18 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; time += dt;
   if (mode === 'online') {
     if (ui === 'play' && net.ws && net.ws.readyState === 1) {
-      const i = mergedInput(), key = `${i.x}${+i.up}${+i.down}${+i.a}${+i.b}`;
-      if (key !== net.lastIn) { net.lastIn = key; net.ws.send(JSON.stringify({ t: 'in', x: i.x, u: i.up, d: i.down, a: i.a, b: i.b })); }
+      pred.acc = Math.min(pred.acc + dt, 0.1);
+      while (pred.acc >= 1 / 60) {
+        pred.acc -= 1 / 60;
+        const i = mergedInput(), s = ++pred.seq;
+        net.ws.send(JSON.stringify({ t: 'in', s, x: i.x, u: i.up ? 1 : 0, d: i.down ? 1 : 0, a: i.a ? 1 : 0, b: i.b ? 1 : 0 }));
+        pred.hist.push({ s, inp: i });
+        if (pred.hist.length > 120) pred.hist.shift();
+        predTick(i);
+      }
     }
-    cur = onlineView(now);
+    const k = Math.exp(-dt * 12); pred.ox *= k; pred.oy *= k;
+    cur = applyPred(onlineView(now));
   } else if (lg) {
     if (mode === 'local' && ui === 'play') localCtrls.forEach((c, i) => { if (c !== 'off' && c !== 'bot') Yeet.setInput(lg, i, rawInput(c)); });
     if (ui !== 'end') Yeet.update(lg, dt);
@@ -653,9 +773,12 @@ function frame(now) {
 }
 
 makePattern();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { bgDirty = true; });
 setTab('online');
 showMenu();
 if (hashCode && nameInput.value) setStatus('netStatus', `Invitation reçue pour la salle ${hashCode.toUpperCase()}. Clique sur Rejoindre.`);
 else if (hashCode) setStatus('netStatus', `Invitation reçue pour la salle ${hashCode.toUpperCase()}. Choisis un pseudo puis clique sur Rejoindre.`);
+// accès de débogage depuis la console
+window.yeetDebug = { pred, net, view: () => cur };
 requestAnimationFrame(frame);
 })();

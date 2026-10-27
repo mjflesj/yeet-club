@@ -53,7 +53,7 @@ function placePlayer(p, initial) {
 }
 
 const active = p => !p.out && p.respawn <= 0;
-const ev = (g, e) => { g.events.push(e); };
+const ev = (g, e) => { if (g) g.events.push(e); };
 const r1 = v => Math.round(v * 10) / 10;
 
 /* ---------- API publique ---------- */
@@ -77,7 +77,7 @@ function update(g, dt) {
   if (g.hitstop > 0) g.hitstop -= dt;
   else {
     g.acc += dt * (g.ending !== null ? 0.35 : 1);
-    while (g.acc >= STEP) {
+    while (g.acc >= STEP - 1e-9) {
       step(g, STEP); g.acc -= STEP;
       if (g.hitstop > 0) { g.acc = 0; break; }
     }
@@ -96,6 +96,8 @@ function view(g) {
       sh: Math.max(0, Math.round(p.shoveT * 1000) / 1000), iv: p.invuln > 0 ? 1 : 0,
       sq: Math.round(p.squash * 100) / 100, es: Math.round(Math.max(0, p.escape) * 100) / 100,
       g: p.ground ? 1 : 0, k: p.kos, fl: p.falls,
+      j: p.jumps, dr: Math.max(0, Math.round(p.drop * 1000) / 1000), ht: Math.max(0, Math.round(p.hitstun * 1000) / 1000),
+      sc: Math.max(0, Math.round(p.shoveCd * 1000) / 1000),
     })),
     it: g.items.map(it => ({
       id: it.id, t: it.type, x: r1(it.x), y: r1(it.y), r: Math.round(it.rot * 100) / 100,
@@ -115,7 +117,7 @@ function results(g) {
 /* ---------- Combat ---------- */
 function burst(g, x, y, n, col, spd, size) { ev(g, ['b', r1(x), r1(y), n, col, spd, size]); }
 function pop(g, x, y, text, col, big) { ev(g, ['p', r1(x), r1(y), text, col, big ? 1 : 0]); }
-function sfx(g, k) { ev(g, ['s', k]); }
+function sfx(g, k, p) { ev(g, ['s', k, p ? p.i : -1]); }
 function shake(g, v) { ev(g, ['k', Math.round(v)]); }
 
 function hit(g, q, dx, dy, base, dmg, by) {
@@ -175,7 +177,7 @@ function doShove(g, p) {
       burst(g, bat.x, bat.y, 14, '#c58a4a', 300, 4); pop(g, p.x, p.y - 50, 'CRAC', '#c58a4a', false);
     }
   }
-  sfx(g, landed ? (bat ? 'bat' : 'hit') : 'whoosh');
+  sfx(g, landed ? (bat ? 'bat' : 'hit') : 'whoosh', p);
 }
 
 function doGrab(g, p, inp) {
@@ -297,14 +299,44 @@ function groundBelow(x, y) {
   return false;
 }
 
+// Déplacement pur (contrôle, saut, gravité, collisions). Partagé par la
+// simulation et par la prédiction locale du client (g peut être null).
+function tickTimers(p, dt) {
+  p.shoveCd -= dt; p.shoveT -= dt; p.grabCd -= dt; p.invuln -= dt; p.drop -= dt; p.lastHitT -= dt;
+  p.squash = Math.max(0, p.squash - dt * 2.5);
+}
+function controlMove(g, p, inp, pr, dt, carrying) {
+  if (inp.x && p.shoveT <= 0) p.face = inp.x;
+  const speed = carrying ? 200 : 310;
+  const k = p.ground ? 16 : 6;
+  p.vx += (inp.x * speed - p.vx) * Math.min(1, dt * k);
+  if (pr.up && p.jumps > 0) {
+    p.vy = p.jumps === 2 ? -760 : -680; p.jumps--; p.ground = false; p.squash = -0.3;
+    burst(g, p.x, p.y + p.h / 2, 5, '#ddd', 120, 3); sfx(g, 'jump', p);
+  }
+  if (inp.down && p.ground && p.gplat && !p.gplat.solid) p.drop = 0.22;
+  if (inp.down && !p.ground && p.vy > -100) p.vy += G * 0.9 * dt;
+}
+function stunDrag(p, dt) {
+  p.hitstun -= dt;
+  p.vx *= p.ground ? Math.pow(0.02, dt) : Math.pow(0.6, dt);
+}
+function integrate(g, p, dt) {
+  p.vy = Math.min(p.vy + G * dt, p.hitstun > 0 ? 2400 : 1300);
+  const pb = p.y + p.h / 2, pt = p.y - p.h / 2;
+  p.x += p.vx * dt; p.y += p.vy * dt;
+  const wasHit = p.hitstun > 0 && p.vy > 650;
+  collide(p, p.w / 2, p.h / 2, pb, pt, true);
+  if (wasHit && p.vy < 0) burst(g, p.x, p.y + p.h / 2, 6, '#aaa', 200, 3);
+}
+
 function updatePlayer(g, p, dt) {
   if (p.out) return;
   if (p.respawn > 0) { p.respawn -= dt; if (p.respawn <= 0) placePlayer(p, false); return; }
   const inp = p.bot ? botInput(g, p, dt) : p.inp;
   const pr = { up: inp.up && !p.prev.up, a: inp.a && !p.prev.a, b: inp.b && !p.prev.b };
   p.prev = inp;
-  p.shoveCd -= dt; p.shoveT -= dt; p.grabCd -= dt; p.invuln -= dt; p.drop -= dt; p.lastHitT -= dt;
-  p.squash = Math.max(0, p.squash - dt * 2.5);
+  tickTimers(p, dt);
 
   if (p.heldBy) {
     if (pr.up || pr.a || pr.b) p.escape -= 0.14;
@@ -313,21 +345,9 @@ function updatePlayer(g, p, dt) {
     return;
   }
 
-  if (p.hitstun > 0) {
-    p.hitstun -= dt;
-    p.vx *= p.ground ? Math.pow(0.02, dt) : Math.pow(0.6, dt);
-  } else {
-    if (inp.x && p.shoveT <= 0) p.face = inp.x;
-    const carrying = p.held && p.held.kind === 'p';
-    const speed = carrying ? 200 : 310;
-    const k = p.ground ? 16 : 6;
-    p.vx += (inp.x * speed - p.vx) * Math.min(1, dt * k);
-    if (pr.up && p.jumps > 0) {
-      p.vy = p.jumps === 2 ? -760 : -680; p.jumps--; p.ground = false; p.squash = -0.3;
-      burst(g, p.x, p.y + p.h / 2, 5, '#ddd', 120, 3); sfx(g, 'jump');
-    }
-    if (inp.down && p.ground && p.gplat && !p.gplat.solid) p.drop = 0.22;
-    if (inp.down && !p.ground && p.vy > -100) p.vy += G * 0.9 * dt;
+  if (p.hitstun > 0) stunDrag(p, dt);
+  else {
+    controlMove(g, p, inp, pr, dt, p.held && p.held.kind === 'p');
     if (pr.a && p.shoveCd <= 0) doShove(g, p);
     if (pr.b && p.grabCd <= 0) doGrab(g, p, inp);
     if (p.held && p.held.kind === 'p') {
@@ -335,15 +355,39 @@ function updatePlayer(g, p, dt) {
       if (p.holdT > 2.2) throwHeld(g, p, NO_INPUT);
     }
   }
-
-  p.vy = Math.min(p.vy + G * dt, p.hitstun > 0 ? 2400 : 1300);
-  const pb = p.y + p.h / 2, pt = p.y - p.h / 2;
-  p.x += p.vx * dt; p.y += p.vy * dt;
-  const wasHit = p.hitstun > 0 && p.vy > 650;
-  collide(p, p.w / 2, p.h / 2, pb, pt, true);
-  if (wasHit && p.vy < 0) burst(g, p.x, p.y + p.h / 2, 6, '#aaa', 200, 3);
+  integrate(g, p, dt);
 
   if (p.x < -200 || p.x > W + 200 || p.y > H + 220 || p.y < -520) ko(g, p);
+}
+
+/* ---------- Prédiction côté client ---------- */
+// Reconstruit un corps prédictible à partir de l'état envoyé par le serveur.
+function restorePlayer(v, prevInp) {
+  const p = {
+    i: v.i, x: v.x, y: v.y, vx: v.vx, vy: v.vy, w: 36, h: 42, face: v.f, ground: !!v.g, gplat: null,
+    jumps: v.j, drop: v.dr, hitstun: v.ht, shoveCd: v.sc, shoveT: v.sh, grabCd: 0, invuln: 0, lastHitT: 0,
+    squash: v.sq, carrying: v.hk === 'p', bat: v.hk === 'bat', prev: prevInp || NO_INPUT,
+  };
+  if (p.ground) p.gplat = PLATS.find(pl => Math.abs(pl.y - (p.y + p.h / 2)) < 1.5 && p.x + 18 > pl.x && p.x - 18 < pl.x + pl.w) || null;
+  return p;
+}
+// Avance le corps prédit d'un pas. Renvoie 'jump' / 'shove' quand l'action démarre.
+function predictStep(p, inp, dt) {
+  const pr = { up: inp.up && !p.prev.up, a: inp.a && !p.prev.a, b: inp.b && !p.prev.b };
+  p.prev = inp;
+  tickTimers(p, dt);
+  let fx = null;
+  if (p.hitstun > 0) stunDrag(p, dt);
+  else {
+    const j = p.jumps;
+    controlMove(null, p, inp, pr, dt, p.carrying);
+    if (p.jumps < j) fx = 'jump';
+    if (pr.a && p.shoveCd <= 0 && !p.carrying) {
+      p.shoveCd = p.bat ? 0.48 : 0.32; p.shoveT = p.bat ? 0.22 : 0.15; fx = 'shove';
+    }
+  }
+  integrate(null, p, dt);
+  return fx;
 }
 
 function updateCarried(g) {
@@ -514,7 +558,7 @@ function botInput(g, p, dt) {
   return r;
 }
 
-const api = { W, H, COLORS, PLATS, createGame, update, setInput, setBot, drainEvents, view, results };
+const api = { W, H, STEP, COLORS, PLATS, createGame, restorePlayer, predictStep, update, setInput, setBot, drainEvents, view, results };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else root.Yeet = api;
 })(typeof self !== 'undefined' ? self : this);

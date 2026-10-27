@@ -31,7 +31,13 @@ public/client.js   rendu canvas, entrées, son, menus, connexion au serveur
 public/index.html  page et styles
 ```
 
-Le serveur fait autorité : il simule chaque partie à 120 Hz, reçoit les entrées des joueurs et diffuse l'état 30 fois par seconde. Les clients affichent cet état avec 100 ms d'interpolation pour rester fluides. Si un joueur se déconnecte en pleine partie, un bot reprend son personnage.
+Le serveur fait autorité : il simule chaque partie à 120 Hz et diffuse l'état 60 fois par seconde. Si un joueur se déconnecte en pleine partie, un bot reprend son personnage.
+
+Pour supprimer le délai ressenti :
+
+- **Prédiction locale** : le client envoie ses entrées 60 fois par seconde, numérotées, et les applique tout de suite à son propre personnage avec la même physique que le serveur (`predictStep` dans `game.js`).
+- **Réconciliation** : chaque instantané indique la dernière entrée traitée par le serveur. Le client repart de l'état du serveur, rejoue les entrées pas encore traitées et lisse le petit écart restant.
+- **Autres joueurs** : affichés avec seulement 50 ms d'interpolation.
 
 ### Messages WebSocket
 
@@ -42,7 +48,7 @@ Le serveur fait autorité : il simule chaque partie à 120 Hz, reçoit les entr�
 | client → serveur | `{t:'seat', i}` | (hôte) ajoute ou retire un bot sur la place `i` |
 | client → serveur | `{t:'stocks', n}` | (hôte) nombre de vies |
 | client → serveur | `{t:'start'}` | (hôte) lance la partie |
-| client → serveur | `{t:'in', x, u, d, a, b}` | entrées du joueur |
+| client → serveur | `{t:'in', s, x, u, d, a, b}` | entrées du joueur (`s` = numéro de séquence), 60 par seconde |
 | client → serveur | `{t:'leave'}` | quitte la salle |
 | serveur → client | `{t:'room', …}` | état du salon |
 | serveur → client | `{t:'start'}` / `{t:'snap', v, e}` / `{t:'end', r}` | partie : début, état + événements, résultats |
@@ -57,6 +63,8 @@ Le serveur fait autorité : il simule chaque partie à 120 Hz, reçoit les entr�
 | Manette   | Stick + A       | X / RB  | B / LB          |
 
 En ligne, tous ces contrôles pilotent ton personnage.
+
+**Sur téléphone** (en paysage) : glisse le pouce sur la moitié gauche de l'écran pour bouger (vers le haut = sauter, vers le bas = traverser une passerelle). À droite : SAUT, POUSSE, CHOPE. Le jeu passe en plein écran au lancement quand le navigateur le permet.
 
 - Plus ton % de dégâts monte, plus tu voles loin.
 - Haut + choper : lancer vers le ciel. Bas sur une passerelle : la traverser.

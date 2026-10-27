@@ -1,7 +1,9 @@
 /* YEET CLUB — serveur de jeu.
    Sert les fichiers de /public et héberge les salles en ligne via WebSocket.
    Le serveur fait autorité : il simule la partie à 120 Hz, reçoit les
-   entrées des joueurs et diffuse l'état à 30 Hz. */
+   entrées des joueurs et diffuse l'état à 60 Hz.
+   Chaque instantané indique la dernière entrée traitée de chaque joueur,
+   ce qui permet au client de prédire son personnage sans attendre. */
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -11,8 +13,8 @@ const Yeet = require('./public/game.js');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
-const TICK_MS = 1000 / 60;
-const SNAP_EVERY = 2;            // 60 Hz / 2 = 30 instantanés par seconde
+const TICK = 1 / 60;            // un tick = une entrée par joueur = 2 pas de simulation
+const MAX_QUEUE = 8;             // au-delà, on jette les entrées les plus vieilles
 const MAX_SEATS = 4;
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -111,24 +113,37 @@ function startGame(room) {
   room.game = Yeet.createGame({ seats, stocks: room.stocks });
   broadcast(room, { t: 'start' });
   roomState(room);
-  let last = Date.now(), tick = 0, events = [];
+  for (const st of room.seats) if (st) { st.q = []; st.inp = { x: 0, up: false, down: false, a: false, b: false }; st.ack = 0; }
+  let last = Date.now(), acc = 0, events = [];
   room.timer = setInterval(() => {
     const now = Date.now(), g = room.game;
     if (!g) return;
-    Yeet.update(g, (now - last) / 1000); last = now;
-    events.push(...Yeet.drainEvents(g));
-    if (++tick % SNAP_EVERY === 0 || g.finished) {
-      broadcast(room, { t: 'snap', v: Yeet.view(g), e: events });
-      events = [];
+    acc = Math.min(acc + (now - last) / 1000, 0.25); last = now;
+    let ticks = 0;
+    while (acc >= TICK && ticks < 5) {
+      acc -= TICK; ticks++;
+      room.seats.forEach((st, i) => {
+        if (!st || !st.ws) return;
+        if (st.q.length) { const m = st.q.shift(); st.inp = m; st.ack = m.s; }
+        Yeet.setInput(g, i, st.inp);
+      });
+      Yeet.update(g, TICK);
+      events.push(...Yeet.drainEvents(g));
+      if (g.finished) break;
     }
+    if (!ticks) return;
+    const v = Yeet.view(g);
+    for (const pv of v.p) { const st = room.seats[pv.i]; pv.q = st && st.ws ? st.ack : 0; }
+    broadcast(room, { t: 'snap', v, e: events });
+    events = [];
     if (g.finished) {
       broadcast(room, { t: 'end', r: Yeet.results(g) });
       stopGame(room);
       // les places tenues par des joueurs partis redeviennent libres
-      room.seats = room.seats.map(s => (s && !s.ws && s.left) ? null : s);
+      room.seats = room.seats.map(st => (st && !st.ws && st.left) ? null : st);
       roomState(room);
     }
-  }, TICK_MS);
+  }, 1000 / 120);
 }
 
 function stopGame(room) {
@@ -140,7 +155,8 @@ function stopGame(room) {
 const wss = new WebSocketServer({ server, maxPayload: 2048 });
 
 wss.on('connection', ws => {
-  ws.room = null; ws.alive = true; ws.budget = 200;
+  if (ws._socket) ws._socket.setNoDelay(true);
+  ws.room = null; ws.alive = true; ws.budget = 240;
   ws.on('pong', () => { ws.alive = true; });
   ws.on('message', raw => {
     if (--ws.budget < 0) return;                    // anti-inondation simple
@@ -153,8 +169,10 @@ wss.on('connection', ws => {
       case 'leave': leaveRoom(ws); break;
       case 'in': {
         if (!room || !room.game) break;
-        const i = room.seats.findIndex(s => s && s.ws === ws);
-        if (i >= 0) Yeet.setInput(room.game, i, { x: m.x | 0, up: m.u, down: m.d, a: m.a, b: m.b });
+        const st = room.seats.find(s => s && s.ws === ws);
+        if (!st || !st.q) break;
+        st.q.push({ s: m.s >>> 0, x: Math.sign(m.x | 0), up: !!m.u, down: !!m.d, a: !!m.a, b: !!m.b });
+        if (st.q.length > MAX_QUEUE) st.q.splice(0, st.q.length - MAX_QUEUE);
         break;
       }
       case 'seat': {
@@ -179,7 +197,7 @@ wss.on('connection', ws => {
 });
 
 // budget de messages rechargé chaque seconde, connexions mortes fermées
-setInterval(() => { for (const ws of wss.clients) ws.budget = 200; }, 1000);
+setInterval(() => { for (const ws of wss.clients) ws.budget = 240; }, 1000);
 setInterval(() => {
   for (const ws of wss.clients) {
     if (!ws.alive) { ws.terminate(); continue; }
