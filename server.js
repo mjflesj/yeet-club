@@ -106,9 +106,14 @@ function leaveRoom(ws) {
   roomState(room);
 }
 
-function startGame(room) {
+function startGame(room, asker) {
   const filled = room.seats.filter(Boolean);
-  if (filled.length < 2) return send(room.host, { t: 'err', msg: 'Il faut au moins deux combattants. Ajoute un bot ou invite un ami.' });
+  if (filled.length < 2) {
+    return send(asker || room.host, { t: 'err', msg: asker
+      ? 'Ton adversaire est parti. Retourne au salon pour ajouter un bot ou inviter quelqu\'un.'
+      : 'Il faut au moins deux combattants. Ajoute un bot ou invite un ami.' });
+  }
+  room.played = true;
   const seats = room.seats.map(s => s ? { bot: !s.ws, name: s.name, label: s.ws ? 'En ligne' : 'Bot' } : null);
   room.game = Yeet.createGame({ seats, stocks: room.stocks });
   broadcast(room, { t: 'start' });
@@ -191,6 +196,8 @@ wss.on('connection', ws => {
         break;
       }
       case 'start': if (room && room.host === ws && !room.game) startGame(room); break;
+      // revanche : n'importe quel joueur de la salle peut la lancer après une partie
+      case 'again': if (room && room.played && !room.game) startGame(room, ws); break;
     }
   });
   ws.on('close', () => leaveRoom(ws));

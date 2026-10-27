@@ -41,7 +41,7 @@ function makePlayer(i, seat, stocks) {
     x: 0, y: 0, vx: 0, vy: 0, w: 36, h: 42, face: i % 2 ? -1 : 1,
     ground: false, gplat: null, jumps: 2, dmg: 0, stocks, out: false, respawn: 0, hitstun: 0,
     shoveCd: 0, shoveT: 0, grabCd: 0, held: null, heldBy: null, escape: 0, holdT: 0, invuln: 0, drop: 0,
-    lastHit: null, lastHitT: 0, kos: 0, falls: 0, squash: 0,
+    lastHit: null, lastHitT: 0, kos: 0, falls: 0, squash: 0, cling: 0, wallUsed: false, wallDir: 0,
     inp: NO_INPUT, prev: { x: 0, up: false, down: false, a: false, b: false }, ai: { cd: 0.5, t: 0, itemCd: 0 },
   };
 }
@@ -50,6 +50,7 @@ function placePlayer(p, initial) {
   p.x = initial ? SPAWN_X[p.i] : 520 + p.i * 80; p.y = initial ? MAIN.y - p.h / 2 : 120;
   p.vx = p.vy = 0; p.dmg = 0; p.hitstun = 0; p.jumps = 2; p.held = null; p.heldBy = null;
   p.invuln = initial ? 0 : 2; p.lastHit = null; p.face = p.x < W / 2 ? 1 : -1;
+  p.cling = 0; p.wallUsed = false;
 }
 
 const active = p => !p.out && p.respawn <= 0;
@@ -98,6 +99,7 @@ function view(g) {
       g: p.ground ? 1 : 0, k: p.kos, fl: p.falls,
       j: p.jumps, dr: Math.max(0, Math.round(p.drop * 1000) / 1000), ht: Math.max(0, Math.round(p.hitstun * 1000) / 1000),
       sc: Math.max(0, Math.round(p.shoveCd * 1000) / 1000),
+      cl: Math.max(0, Math.round(p.cling * 1000) / 1000), wu: p.wallUsed ? 1 : 0, wd: p.wallDir,
     })),
     it: g.items.map(it => ({
       id: it.id, t: it.type, x: r1(it.x), y: r1(it.y), r: Math.round(it.rot * 100) / 100,
@@ -124,7 +126,7 @@ function hit(g, q, dx, dy, base, dmg, by) {
   const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
   q.dmg = Math.min(999, q.dmg + dmg);
   const v = base * (1 + q.dmg / 85);
-  q.vx = dx * v; q.vy = dy * v; q.hitstun = 0.14 + v / 2800; q.ground = false;
+  q.vx = dx * v; q.vy = dy * v; q.hitstun = 0.14 + v / 2800; q.ground = false; q.cling = 0;
   if (q.held) release(g, q, false);
   if (q.heldBy) release(g, q.heldBy, false);
   if (by) { q.lastHit = by; q.lastHitT = 5; }
@@ -292,6 +294,7 @@ function land(o, pl, hh) {
   if (o.hitstun > 0 && o.vy > 650) { o.vy = -o.vy * 0.42; return; }
   if (o.vy > 500 && o.squash !== undefined) o.squash = 0.35;
   o.vy = 0; o.ground = true; o.gplat = pl;
+  if (o.wallUsed !== undefined) o.wallUsed = false;
   if (o.jumps !== undefined) o.jumps = 2;
 }
 function groundBelow(x, y) {
@@ -316,6 +319,40 @@ function controlMove(g, p, inp, pr, dt, carrying) {
   }
   if (inp.down && p.ground && p.gplat && !p.gplat.solid) p.drop = 0.22;
   if (inp.down && !p.ground && p.vy > -100) p.vy += G * 0.9 * dt;
+}
+// Accroche au mur : une fois par saut, en se poussant contre le côté du ring.
+// Le joueur glisse doucement, puis saute pour remonter (un saut en l'air reste dispo).
+const CLING_TIME = 1.2, CLING_ZONE = 220;
+function wallNear(p) {
+  for (const pl of PLATS) {
+    if (!pl.solid || p.y < pl.y - 10 || p.y > pl.y + CLING_ZONE) continue;
+    if (Math.abs(p.x + p.w / 2 - pl.x) < 6) return 1;              // mur à droite
+    if (Math.abs(p.x - p.w / 2 - (pl.x + pl.w)) < 6) return -1;    // mur à gauche
+  }
+  return 0;
+}
+// Renvoie false (pas au mur), 'cling' (accroché) ou 'jump' (saut depuis le mur)
+function wallMove(g, p, inp, pr, dt, carrying) {
+  if (p.cling > 0) {
+    p.cling -= dt; p.face = p.wallDir;
+    p.vx = p.wallDir * 30; p.vy = 30;
+    if (pr.up) {
+      p.cling = 0; p.vy = -960; p.vx = p.wallDir * 170; p.jumps = 1; p.squash = -0.3;
+      burst(g, p.x + p.wallDir * p.w / 2, p.y, 8, '#ddd', 180, 3); sfx(g, 'jump', p);
+      return 'jump';
+    }
+    if (inp.down || inp.x === -p.wallDir) p.cling = 0;
+    return 'cling';
+  }
+  if (!p.ground && !p.wallUsed && !carrying && p.vy > -250) {
+    const d = wallNear(p);
+    if (d && inp.x === d) {
+      p.cling = CLING_TIME; p.wallUsed = true; p.wallDir = d; p.face = d; p.vx = 0; p.vy = 0;
+      burst(g, p.x + d * p.w / 2, p.y - 10, 6, '#ffc93c', 120, 3); sfx(g, 'grab', p);
+      return 'cling';
+    }
+  }
+  return false;
 }
 function stunDrag(p, dt) {
   p.hitstun -= dt;
@@ -347,9 +384,12 @@ function updatePlayer(g, p, dt) {
 
   if (p.hitstun > 0) stunDrag(p, dt);
   else {
-    controlMove(g, p, inp, pr, dt, p.held && p.held.kind === 'p');
-    if (pr.a && p.shoveCd <= 0) doShove(g, p);
-    if (pr.b && p.grabCd <= 0) doGrab(g, p, inp);
+    const carrying = p.held && p.held.kind === 'p';
+    if (!wallMove(g, p, inp, pr, dt, carrying)) {
+      controlMove(g, p, inp, pr, dt, carrying);
+      if (pr.a && p.shoveCd <= 0) doShove(g, p);
+      if (pr.b && p.grabCd <= 0) doGrab(g, p, inp);
+    }
     if (p.held && p.held.kind === 'p') {
       p.holdT += dt;
       if (p.holdT > 2.2) throwHeld(g, p, NO_INPUT);
@@ -366,7 +406,7 @@ function restorePlayer(v, prevInp) {
   const p = {
     i: v.i, x: v.x, y: v.y, vx: v.vx, vy: v.vy, w: 36, h: 42, face: v.f, ground: !!v.g, gplat: null,
     jumps: v.j, drop: v.dr, hitstun: v.ht, shoveCd: v.sc, shoveT: v.sh, grabCd: 0, invuln: 0, lastHitT: 0,
-    squash: v.sq, carrying: v.hk === 'p', bat: v.hk === 'bat', prev: prevInp || NO_INPUT,
+    squash: v.sq, cling: v.cl, wallUsed: !!v.wu, wallDir: v.wd, carrying: v.hk === 'p', bat: v.hk === 'bat', prev: prevInp || NO_INPUT,
   };
   if (p.ground) p.gplat = PLATS.find(pl => Math.abs(pl.y - (p.y + p.h / 2)) < 1.5 && p.x + 18 > pl.x && p.x - 18 < pl.x + pl.w) || null;
   return p;
@@ -379,11 +419,15 @@ function predictStep(p, inp, dt) {
   let fx = null;
   if (p.hitstun > 0) stunDrag(p, dt);
   else {
-    const j = p.jumps;
-    controlMove(null, p, inp, pr, dt, p.carrying);
-    if (p.jumps < j) fx = 'jump';
-    if (pr.a && p.shoveCd <= 0 && !p.carrying) {
-      p.shoveCd = p.bat ? 0.48 : 0.32; p.shoveT = p.bat ? 0.22 : 0.15; fx = 'shove';
+    const wall = wallMove(null, p, inp, pr, dt, p.carrying);
+    if (wall === 'jump') fx = 'jump';
+    else if (!wall) {
+      const j = p.jumps;
+      controlMove(null, p, inp, pr, dt, p.carrying);
+      if (p.jumps < j) fx = 'jump';
+      if (pr.a && p.shoveCd <= 0 && !p.carrying) {
+        p.shoveCd = p.bat ? 0.48 : 0.32; p.shoveT = p.bat ? 0.22 : 0.15; fx = 'shove';
+      }
     }
   }
   integrate(null, p, dt);
@@ -480,6 +524,7 @@ function botInput(g, p, dt) {
   const canJump = () => !p.prev.up;
 
   // Revenir sur le ring
+  if (p.cling > 0) { r.x = p.wallDir; r.up = canJump() && Math.random() < 0.2; return r; }
   if (!p.ground && !groundBelow(p.x, p.y)) {
     r.x = p.x < W / 2 ? 1 : -1;
     if (p.vy > -60 && p.jumps > 0 && canJump()) r.up = true;

@@ -48,6 +48,7 @@ Pour supprimer le délai ressenti :
 | client → serveur | `{t:'seat', i}` | (hôte) ajoute ou retire un bot sur la place `i` |
 | client → serveur | `{t:'stocks', n}` | (hôte) nombre de vies |
 | client → serveur | `{t:'start'}` | (hôte) lance la partie |
+| client → serveur | `{t:'again'}` | (n'importe quel joueur) relance une partie après la fin d'un round |
 | client → serveur | `{t:'in', s, x, u, d, a, b}` | entrées du joueur (`s` = numéro de séquence), 60 par seconde |
 | client → serveur | `{t:'leave'}` | quitte la salle |
 | serveur → client | `{t:'room', …}` | état du salon |
@@ -68,6 +69,7 @@ En ligne, tous ces contrôles pilotent ton personnage.
 
 - Plus ton % de dégâts monte, plus tu voles loin.
 - Haut + choper : lancer vers le ciel. Bas sur une passerelle : la traverser.
+- Éjecté sous le ring ? Pousse contre le mur pour t'y agripper (une fois par saut), puis saute pour remonter.
 - Chopé ? Martèle les boutons pour te libérer.
 - Objets : caisse (se lance), bombe (explose 3 s après ramassage), batte (4 coups).
 

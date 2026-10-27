@@ -65,18 +65,24 @@ stickZone.addEventListener('pointerdown', e => {
   if (stick.id !== null) return;
   e.preventDefault(); initAudio();
   stick.id = e.pointerId; stick.x = e.clientX; stick.y = e.clientY;
-  const r = stage.getBoundingClientRect();
-  stickBase.style.left = (e.clientX - r.left) + 'px'; stickBase.style.top = (e.clientY - r.top) + 'px';
+  const r = stickZone.getBoundingClientRect();
+  stickBase.style.left = Math.max(60, Math.min(r.width - 60, e.clientX - r.left)) + 'px';
+  stickBase.style.top = Math.max(60, Math.min(r.height - 60, e.clientY - r.top)) + 'px';
   stickBase.classList.add('on'); stickSet(0, 0);
   try { stickZone.setPointerCapture(e.pointerId); } catch {}
 });
-stickZone.addEventListener('pointermove', e => { if (e.pointerId === stick.id) stickSet(e.clientX - stick.x, e.clientY - stick.y); });
-const stickEnd = e => {
-  if (e.pointerId !== stick.id) return;
+// Le doigt peut sortir de la zone : on suit le déplacement et le relâchement sur
+// toute la fenêtre, sinon le personnage continue à courir tout seul.
+addEventListener('pointermove', e => { if (e.pointerId === stick.id) stickSet(e.clientX - stick.x, e.clientY - stick.y); }, { passive: true });
+function stickEnd(e) {
+  if (e && e.pointerId !== stick.id) return;
   stick.id = null; stickSet(0, 0); stickBase.classList.remove('on');
   stickBase.style.left = ''; stickBase.style.top = '';
-};
-stickZone.addEventListener('pointerup', stickEnd); stickZone.addEventListener('pointercancel', stickEnd);
+}
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, stickEnd);
+stickZone.addEventListener('lostpointercapture', stickEnd);
+addEventListener('blur', () => { stickEnd(); resetTouch(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { stickEnd(); resetTouch(); } });
 document.querySelectorAll('#btns button').forEach(btn => {
   const k = btn.dataset.k;
   const on = e => { e.preventDefault(); touch[k] = true; btn.classList.add('on'); if (navigator.vibrate) try { navigator.vibrate(8); } catch {} };
@@ -85,7 +91,7 @@ document.querySelectorAll('#btns button').forEach(btn => {
   btn.addEventListener('pointerup', off); btn.addEventListener('pointercancel', off); btn.addEventListener('pointerleave', off);
   btn.addEventListener('contextmenu', e => e.preventDefault());
 });
-function resetTouch() { for (const k in touch) touch[k] = false; document.querySelectorAll('#btns button').forEach(b => b.classList.remove('on')); }
+function resetTouch() { stick.id = null; stickKnob.style.transform = ''; stickBase.classList.remove('on'); stickBase.style.left = stickBase.style.top = ''; for (const k in touch) touch[k] = false; document.querySelectorAll('#btns button').forEach(b => b.classList.remove('on')); }
 function goFullscreen() {
   if (!isTouch) return;
   try {
@@ -252,7 +258,7 @@ function applyPred(v) {
   const idx = v.p.findIndex(q => q.i === net.you);
   if (idx < 0) return v;
   const q = pred.p, x = q.x + pred.ox, y = q.y + pred.oy;
-  const me = { ...v.p[idx], x, y, vx: q.vx, vy: q.vy, f: q.face, g: q.ground ? 1 : 0, sh: Math.max(0, q.shoveT), sq: q.squash, hs: q.hitstun > 0 ? 1 : 0 };
+  const me = { ...v.p[idx], x, y, vx: q.vx, vy: q.vy, f: q.face, g: q.ground ? 1 : 0, sh: Math.max(0, q.shoveT), sq: q.squash, hs: q.hitstun > 0 ? 1 : 0, cl: Math.max(0, q.cling) };
   const out = { ...v, p: v.p.slice(), it: v.it.map(it => {
     if (it.h !== net.you) return it;
     return it.t === 'bat' ? { ...it, x: x + me.f * 22, y: y - 6 } : { ...it, x, y: y - 37 };
@@ -416,7 +422,10 @@ function drawPlayer(p, me) {
   }
   const carrying = p.hk && p.hk !== 'bat';
   ctx.fillStyle = col.d;
-  if (carrying) {
+  if (p.cl > 0) {
+    // mains plaquées contre le mur
+    ctx.beginPath(); ctx.arc(w / 2 + 4, -h + 4, 6, 0, Math.PI * 2); ctx.arc(w / 2 + 4, -h * 0.5, 6, 0, Math.PI * 2); ctx.fill();
+  } else if (carrying) {
     ctx.beginPath(); ctx.arc(-w / 2 + 2, -h - 2, 6, 0, Math.PI * 2); ctx.arc(w / 2 - 2, -h - 2, 6, 0, Math.PI * 2); ctx.fill();
   } else {
     const ext = p.sh > 0 && !p.hk ? 20 * Math.sin(Math.max(0, 1 - p.sh / 0.15) * Math.PI) : 0;
@@ -545,8 +554,10 @@ function showEnd(r) {
     tb.appendChild(tr);
   });
   const again = $('againBtn'), back = $('menuBtn');
+  setStatus('endStatus', '');
+  again.disabled = false;
   if (mode === 'online') {
-    again.hidden = !net.host; again.textContent = 'Revanche';
+    again.hidden = false; again.textContent = 'Revanche';
     back.textContent = 'Retour au salon';
   } else {
     again.hidden = false; again.textContent = 'Revanche'; back.textContent = 'Menu';
@@ -558,7 +569,14 @@ function quit() {
   showMenu();
 }
 pauseBtn.onclick = quit;
-$('againBtn').onclick = () => { if (mode === 'online') netSend({ t: 'start' }); else startLocal(); };
+$('againBtn').onclick = () => {
+  if (mode !== 'online') { startLocal(); return; }
+  if (!net.ws || net.ws.readyState !== 1) { setStatus('endStatus', 'Connexion perdue avec le serveur. Retourne au menu pour recréer une salle.', true); return; }
+  goFullscreen();
+  $('againBtn').disabled = true;
+  setStatus('endStatus', 'Revanche demandée…');
+  netSend({ t: 'again' });
+};
 $('menuBtn').onclick = () => { if (mode === 'online') { mode = 'demo'; showMenu(); setTab('online'); } else showMenu(); };
 
 /* ---------- Onglets ---------- */
@@ -657,14 +675,14 @@ function netSend(m) {
 function onNet(m) {
   switch (m.t) {
     case 'err':
-      setStatus(net.room ? 'lobbyStatus' : 'netStatus', m.msg, true);
+      if (ui === 'end') { setStatus('endStatus', m.msg, true); $('againBtn').disabled = false; }
+      else setStatus(net.room ? 'lobbyStatus' : 'netStatus', m.msg, true);
       break;
     case 'room':
       net.room = m; net.you = m.you; net.host = m.host;
       if (!location.hash || location.hash.slice(1) !== m.code) history.replaceState(null, '', '#' + m.code);
       renderLobby();
       if (ui === 'menu') setTab('online');
-      if (ui === 'end' && mode === 'online') { $('againBtn').hidden = !net.host; }
       break;
     case 'start':
       initAudio();
