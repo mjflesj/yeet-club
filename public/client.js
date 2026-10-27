@@ -104,6 +104,26 @@ function goFullscreen() {
   } catch {}
 }
 
+// iPhone : Safari ignore « user-scalable=no ». On bloque nous-mêmes le zoom
+// au double-tap et au pincement, sans gêner les champs de texte.
+(() => {
+  const editable = t => t && t.closest && t.closest('input, textarea, select');
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTouchEnd < 350 && !editable(e.target)) {
+      e.preventDefault();
+      // le second tap sur un bouton doit quand même compter comme un clic
+      const btn = e.target.closest && e.target.closest('button, summary');
+      if (btn && !btn.closest('#touch')) btn.click();
+    }
+    lastTouchEnd = now;
+  }, { passive: false });
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  document.addEventListener('dblclick', e => { if (!editable(e.target)) e.preventDefault(); }, { passive: false });
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+})();
+
 function getPads() { try { return navigator.getGamepads ? navigator.getGamepads() : []; } catch { return []; } }
 function rawInput(ctrl) {
   const r = { x: 0, up: false, down: false, a: false, b: false };
